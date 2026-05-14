@@ -108,50 +108,10 @@ class _SocialScreenState extends State<SocialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          color: colors.primary,
-          padding: const EdgeInsets.only(top: 14),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('👥 Social',
-                      style: TextStyle(
-                          color: colors.onPrimary,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800)),
-                ),
-              ),
-              Theme(
-                data: Theme.of(context).copyWith(
-                  tabBarTheme: TabBarThemeData(
-                    labelColor: colors.onPrimary,
-                    unselectedLabelColor: colors.onPrimary.withOpacity(0.7),
-                    indicatorColor: colors.onPrimary,
-                  ),
-                ),
-                child: DefaultTabController(
-                  length: 3,
-                  initialIndex: _page,
-                  child: TabBar(
-                    onTap: _goTo,
-                    tabs: [
-                      _tab('🌍 Community', _communityEvents.length),
-                      _tab('💬 Chats', widget.unreadChatIds.length),
-                      _tab('🤝 Requests', _requestProfiles.length),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _header(),
+        _tabBar(),
         Expanded(
           child: PageView(
             controller: _pageCtl,
@@ -170,82 +130,382 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  Widget _tab(String text, int count) {
-    return Tab(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _header() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.chrome,
+        border: Border(bottom: BorderSide(color: AppColors.chromeBorder)),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.marginMobile, AppSpacing.stackSm, AppSpacing.marginMobile, AppSpacing.stackMd),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          if (count > 0) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: AppColors.tertiaryContainer,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('$count',
-                  style: const TextStyle(
-                      color: AppColors.onTertiaryContainer,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold)),
-            ),
+          Text('Community',
+              style: AppText.headlineLg(AppColors.primary)
+                  .copyWith(fontSize: 30, height: 1.1)),
+          const SizedBox(height: 6),
+          Text(
+            'Connect with fellow trekkers and manage your hiking expeditions.',
+            style: AppText.bodyMd(AppColors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabBar() {
+    final tabs = [
+      ('Community', _communityEvents.length, Icons.public_rounded),
+      ('Chats', widget.unreadChatIds.length, Icons.chat_bubble_outline_rounded),
+      ('Requests', _requestProfiles.length, Icons.person_add_alt_1_rounded),
+    ];
+    return Container(
+      color: AppColors.background,
+      padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile, 16, AppSpacing.marginMobile, 8),
+      child: Row(
+        children: [
+          for (var i = 0; i < tabs.length; i++) ...[
+            Expanded(child: _tabButton(tabs[i].$1, tabs[i].$2, tabs[i].$3, i)),
+            if (i < tabs.length - 1) const SizedBox(width: 8),
           ],
         ],
       ),
     );
   }
 
+  Widget _tabButton(String label, int badge, IconData icon, int index) {
+    final selected = _page == index;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        onTap: () => _goTo(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary : AppColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.outlineVariant),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  color: selected ? AppColors.onPrimary : AppColors.onSurfaceVariant,
+                  size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppText.labelLg(
+                    selected ? AppColors.onPrimary : AppColors.onSurfaceVariant),
+              ),
+              if (badge > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? Colors.white.withOpacity(0.22)
+                        : AppColors.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                  ),
+                  child: Text(
+                    '$badge',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: selected
+                          ? AppColors.onPrimary
+                          : AppColors.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Community page ─────────────────────────────────────────────────────
   Widget _communityPage() {
-    if (_communityEvents.isEmpty) {
-      return _empty('🗺️', 'No community hikes yet',
-          'When someone hosts a hike, it will show up here.');
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      itemCount: _communityEvents.length,
-      itemBuilder: (_, i) {
-        final e = _communityEvents[i];
-        final isHost = e.creatorId == widget.currentUserId;
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
+          AppSpacing.stackSm, AppSpacing.marginMobile, AppSpacing.stackLg),
+      children: [
+        _ctaRow(),
+        const SizedBox(height: AppSpacing.stackMd),
+        Row(
+          children: [
+            Expanded(
+                child: Text('My Groups',
+                    style: AppText.headlineMd(AppColors.onSurface))),
+            if (_communityEvents.isNotEmpty)
+              Text('View All',
+                  style: AppText.labelLg(AppColors.primary)),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.stackSm),
+        if (_communityEvents.isEmpty)
+          _empty(Icons.terrain_rounded, 'No community hikes yet',
+              'When someone hosts a hike, it will show up here.')
+        else
+          ..._communityEvents.map(_groupCard),
+      ],
+    );
+  }
+
+  Widget _ctaRow() {
+    return Row(
+      children: [
+        Expanded(child: _cta(
+          'Add Friend',
+          Icons.person_add_alt_1_rounded,
+          primary: true,
+          onTap: () => _goTo(2),
+        )),
+        const SizedBox(width: 12),
+        Expanded(child: _cta(
+          'Create Group',
+          Icons.groups_2_rounded,
+          primary: false,
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Open a trail to host a group hike.')),
+            );
+          },
+        )),
+      ],
+    );
+  }
+
+  Widget _cta(String label, IconData icon,
+      {required bool primary, required VoidCallback onTap}) {
+    return Material(
+      color: primary ? AppColors.primary : AppColors.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+                color: primary ? Colors.transparent : AppColors.outlineVariant),
+            boxShadow: primary
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      offset: const Offset(0, 3),
+                      blurRadius: 0,
+                    )
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Icon(icon,
+                  color: primary ? AppColors.onPrimary : AppColors.primary,
+                  size: 22),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: AppText.labelLg(
+                    primary ? AppColors.onPrimary : AppColors.primary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _groupCard(HikeEvent e) {
+    final isHost = e.creatorId == widget.currentUserId;
+    final diff = difficultyColors('moderate'); // events default to moderate visual
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        elevation: 1,
+        shadowColor: Colors.black.withOpacity(0.06),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: () {
+            AppFeedback.tap();
+            widget.onFeedItemClick(e.trailId);
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.outlineVariant),
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [
-                  const Text('📅', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 10),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(AppRadius.md)),
+                      child: Container(
+                        height: 120,
+                        color: AppColors.primaryContainer,
+                        child: const Center(
+                          child: Icon(Icons.landscape_rounded,
+                              size: 64, color: Color(0xFF9DD090)),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 14,
+                      bottom: 12,
+                      right: 14,
+                      child: Text(
+                        e.trailName,
+                        style: AppText.headlineMd(Colors.white)
+                            .copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(AppRadius.lg * 2),
+                        ),
+                        child: Text(
+                          '${e.attendees.length}/${e.maxHikers}',
+                          style: AppText.labelSm(AppColors.primary)
+                              .copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: diff.bg,
+                          borderRadius: BorderRadius.circular(AppRadius.lg * 2),
+                        ),
+                        child: Text(
+                          'Group Hike',
+                          style: AppText.labelSm(diff.fg)
+                              .copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.calendar_today_rounded,
+                          size: 14, color: AppColors.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          e.dateText,
+                          style: AppText.labelSm(AppColors.onSurfaceVariant),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isHost)
+                        Text('You host',
+                            style: AppText.labelSm(AppColors.primary)
+                                .copyWith(fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Chats page ─────────────────────────────────────────────────────────
+  Widget _chatsPage() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_friendProfiles.isEmpty) {
+      return _empty(Icons.chat_bubble_outline_rounded, 'No friends yet',
+          'Explore trails and connect with hikers.');
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
+          AppSpacing.stackSm, AppSpacing.marginMobile, AppSpacing.stackLg),
+      itemCount: _friendProfiles.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) {
+        final f = _friendProfiles[i];
+        final chatId = widget.currentUserId.compareTo(f.id) < 0
+            ? '${widget.currentUserId}_${f.id}'
+            : '${f.id}_${widget.currentUserId}';
+        final unread = widget.unreadChatIds.contains(chatId);
+        return Material(
+          color: AppColors.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            onTap: () {
+              AppFeedback.tap();
+              widget.onChatClick(f.id, f.name);
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: AppColors.outlineVariant),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  _avatar(f.profilePic, f.name, size: 44),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(e.trailName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(f.name,
+                            style: AppText.labelLg(AppColors.onSurface)
+                                .copyWith(
+                                    fontWeight: unread
+                                        ? FontWeight.w800
+                                        : FontWeight.w600)),
                         Text(
-                            '🗓️ ${e.dateText} • 👤 ${e.creatorName}${isHost ? " (you)" : ""}',
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          f.bio.isEmpty ? 'Tap to message' : f.bio,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.labelSm(AppColors.onSurfaceVariant),
+                        ),
                       ],
                     ),
                   ),
-                ]),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Chip(label: Text('🏃 ${e.attendees.length}/${e.maxHikers}')),
-                    FilledButton.tonal(
-                      onPressed: () {
-                        AppFeedback.tap();
-                        widget.onFeedItemClick(e.trailId);
-                      },
-                      child: const Text('🥾 View Trail'),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: unread
+                          ? AppColors.primary
+                          : AppColors.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(AppRadius.base),
                     ),
-                  ],
-                ),
-              ],
+                    child: Icon(Icons.chat_bubble_outline_rounded,
+                        size: 18,
+                        color: unread ? Colors.white : AppColors.primary),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -253,78 +513,68 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  Widget _chatsPage() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_friendProfiles.isEmpty) {
-      return _empty('👥', 'No friends yet', 'Explore trails and connect with hikers.');
-    }
-    return ListView.builder(
-      itemCount: _friendProfiles.length,
-      itemBuilder: (_, i) {
-        final f = _friendProfiles[i];
-        final chatId = widget.currentUserId.compareTo(f.id) < 0
-            ? '${widget.currentUserId}_${f.id}'
-            : '${f.id}_${widget.currentUserId}';
-        final unread = widget.unreadChatIds.contains(chatId);
-        return ListTile(
-          onTap: () {
-            AppFeedback.tap();
-            widget.onChatClick(f.id, f.name);
-          },
-          leading: _avatar(f.profilePic, f.name),
-          title: Text(f.name,
-              style: TextStyle(
-                  fontWeight: unread ? FontWeight.w900 : FontWeight.w600)),
-          subtitle: Text(f.bio.isEmpty ? 'Available' : f.bio,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: unread
-              ? Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).colorScheme.tertiary),
-                )
-              : null,
-        );
-      },
-    );
-  }
-
+  // ─── Requests page ──────────────────────────────────────────────────────
   Widget _requestsPage() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_requestProfiles.isEmpty) {
-      return _empty('🤝', 'No pending requests', 'Friend requests will appear here.');
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
-    return ListView.builder(
+    if (_requestProfiles.isEmpty) {
+      return _empty(Icons.person_add_alt_1_rounded, 'No pending requests',
+          'Friend requests will appear here.');
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
+          AppSpacing.stackSm, AppSpacing.marginMobile, AppSpacing.stackLg),
       itemCount: _requestProfiles.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final r = _requestProfiles[i];
-        return ListTile(
-          onTap: () => widget.onProfileClick(r.id),
-          leading: _avatar(r.profilePic, r.name),
-          title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: const Text('Wants to connect'),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.outlineVariant),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Row(
             children: [
+              InkWell(
+                onTap: () => widget.onProfileClick(r.id),
+                child: _avatar(r.profilePic, r.name, size: 44),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.name, style: AppText.labelLg(AppColors.onSurface)),
+                    Text('Wants to connect',
+                        style: AppText.labelSm(AppColors.onSurfaceVariant)),
+                  ],
+                ),
+              ),
               IconButton(
                 onPressed: () {
                   AppFeedback.warning();
                   widget.onReject(r.id);
                 },
-                icon: const Icon(Icons.close),
+                icon: const Icon(Icons.close_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.surfaceContainerHigh,
+                  foregroundColor: AppColors.onSurfaceVariant,
+                ),
               ),
+              const SizedBox(width: 6),
               IconButton(
                 onPressed: () {
                   AppFeedback.success();
                   widget.onAccept(r.id);
                 },
+                icon: const Icon(Icons.check_rounded),
                 style: IconButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.onPrimary,
                 ),
-                icon: const Icon(Icons.check),
               ),
             ],
           ),
@@ -333,29 +583,56 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  Widget _avatar(String url, String name) {
-    return CircleAvatar(
-      backgroundColor: AppColors.surfaceVariant,
-      backgroundImage: url.isNotEmpty ? CachedNetworkImageProvider(url) : null,
-      child: url.isEmpty ? const Icon(Icons.person) : null,
+  Widget _avatar(String url, String name, {double size = 40}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.primaryFixed,
+        border: Border.all(color: AppColors.outlineVariant),
+        image: url.isNotEmpty
+            ? DecorationImage(
+                image: CachedNetworkImageProvider(url),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: url.isEmpty
+          ? Center(
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: AppText.labelLg(AppColors.primary)
+                    .copyWith(fontWeight: FontWeight.w800),
+              ),
+            )
+          : null,
     );
   }
 
-  Widget _empty(String emoji, String title, String message) {
+  Widget _empty(IconData icon, String title, String message) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 42)),
-            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 40, color: AppColors.primary),
+            ),
+            const SizedBox(height: 14),
             Text(title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: AppText.headlineMd(AppColors.onSurface)
+                    .copyWith(fontSize: 18),
                 textAlign: TextAlign.center),
             const SizedBox(height: 4),
             Text(message,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: AppText.bodyMd(AppColors.onSurfaceVariant),
                 textAlign: TextAlign.center),
           ],
         ),

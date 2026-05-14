@@ -481,33 +481,158 @@ class _RootShellState extends State<RootShell> {
 
   Widget _buildBottomBar() {
     final socialBadge = _myReceivedRequests.length + _myUnreadChatIds.length;
-    final tabs = [
-      ('Home', 'Home', Icons.home, 0),
-      ('Social', 'Social', Icons.group, socialBadge),
-      ('Favorites', 'Favorites',
-          _currentTab == 'Favorites' ? Icons.favorite : Icons.favorite_border, 0),
-      (_isAdmin && _currentTab == 'Admin' ? 'Admin' : 'Profile', 'Profile', Icons.person, 0),
+    final selectedIndex = switch (_currentTab) {
+      'Home' => 0,
+      'Social' => 1,
+      'Favorites' => 2,
+      'Profile' || 'Admin' => 3,
+      _ => 0,
+    };
+
+    final tabs = <_StitchNavTab>[
+      _StitchNavTab(
+        key: 'Home',
+        label: 'Home',
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home_rounded,
+      ),
+      _StitchNavTab(
+        key: 'Social',
+        label: 'Social',
+        icon: Icons.group_outlined,
+        activeIcon: Icons.group_rounded,
+        badge: socialBadge,
+      ),
+      _StitchNavTab(
+        key: 'Favorites',
+        label: 'Saved',
+        icon: Icons.bookmark_outline_rounded,
+        activeIcon: Icons.bookmark_rounded,
+      ),
+      _StitchNavTab(
+        key: _isAdmin && _currentTab == 'Admin' ? 'Admin' : 'Profile',
+        label: 'Profile',
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+      ),
     ];
-    return NavigationBar(
-      selectedIndex: switch (_currentTab) {
-        'Home' => 0,
-        'Social' => 1,
-        'Favorites' => 2,
-        'Profile' || 'Admin' => 3,
-        _ => 0,
-      },
-      onDestinationSelected: (i) {
-        AppFeedback.tap();
-        setState(() => _currentTab = tabs[i].$1);
-      },
-      destinations: tabs
-          .map((t) => NavigationDestination(
-                icon: t.$4 > 0
-                    ? Badge(label: Text('${t.$4}'), child: Icon(t.$3))
-                    : Icon(t.$3),
-                label: t.$2,
-              ))
-          .toList(),
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.chrome,
+        border: Border(
+          top: BorderSide(color: AppColors.chromeBorder),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              for (var i = 0; i < tabs.length; i++)
+                _StitchNavItem(
+                  tab: tabs[i],
+                  selected: i == selectedIndex,
+                  onTap: () {
+                    AppFeedback.tap();
+                    setState(() => _currentTab = tabs[i].key);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StitchNavTab {
+  final String key;
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+  final int badge;
+  const _StitchNavTab({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+    this.badge = 0,
+  });
+}
+
+class _StitchNavItem extends StatelessWidget {
+  final _StitchNavTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StitchNavItem({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppColors.primary : AppColors.onSurfaceVariant.withOpacity(0.7);
+    final iconWidget = Icon(
+      selected ? tab.activeIcon : tab.icon,
+      color: color,
+      size: 24,
+    );
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.base),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black.withOpacity(0.05) : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.base),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                    spreadRadius: -1,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            tab.badge > 0
+                ? Badge(
+                    label: Text('${tab.badge}'),
+                    backgroundColor: AppColors.tertiaryContainer,
+                    textColor: AppColors.onTertiaryContainer,
+                    child: iconWidget,
+                  )
+                : iconWidget,
+            const SizedBox(height: 2),
+            Text(
+              tab.label.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
