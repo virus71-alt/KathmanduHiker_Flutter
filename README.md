@@ -1,207 +1,124 @@
-────────────────────────────────────────────────────────────────────
-                  🏔️  KATHMANDU HIKER  🏔️
-       The community trail companion for the Himalayas
-────────────────────────────────────────────────────────────────────
+═══════════════════════════════════════════════════════════════
+              🏔️  KATHMANDU HIKER  🏔️
+   The community trail companion for the Himalayas
+═══════════════════════════════════════════════════════════════
 
 
-🌿 WHAT IS IT
+🌿 WHAT IT IS
 ─────────────
+Kathmandu Hiker is a community-driven hiking app for the Kathmandu
+Valley and the surrounding Himalayan foothills. It's three things
+in one:
 
-Kathmandu Hiker is a community-driven hiking and trail discovery app
-focused on the Kathmandu Valley and the surrounding Himalayan
-foothills. It blends three things into one product:
-
-  1.  📍  A crowdsourced trail guide  — anyone can submit a trail
-      with photos, route, public-bus fare, difficulty, hidden spots
-      and hard sections. Submissions go through admin approval
-      before they show up to the rest of the community.
-
-  2.  🛰️  A live GPS hike tracker  — track your hike in real time
-      with smart filtering that ignores bus, car and motorbike
-      segments (anything moving faster than ~8 km/h is dropped) so
-      only genuine on-foot distance counts.
-
-  3.  👥  A small hiking social network  — connect with other
-      trekkers, send friend requests, chat one-on-one, plan group
-      hikes, review trails, and share community photos.
+  📍  A crowdsourced trail guide   (anyone submits, admin approves)
+  🛰️  A live GPS hike tracker      (bus & car travel auto-filtered)
+  👥  A small hiking social network (friends, chats, group hikes)
 
 
-🎯 THE PROBLEM IT SOLVES
-────────────────────────
+🎯 THE PROBLEM
+──────────────
+Kathmandu has dozens of casual day-hikes — Shivapuri, Champadevi,
+Nagarjun, Phulchowki, Chandragiri — but info is scattered across
+blogs, WhatsApp groups and tribal knowledge. Hikers can't easily
+answer:
 
-Kathmandu has dozens of casual day-hike trails — Shivapuri, Champadevi,
-Nagarjun, Phulchowki, Chandragiri — but the information for each is
-scattered across blogs, WhatsApp groups, Instagram reels and tribal
-knowledge. Tourists and locals both struggle to answer simple
-questions:
+  🚌  How do I get there by local bus, and the fare?
+  ⛰️  How hard is the climb, and is it crowded?
+  🌄  Where's that hidden viewpoint everyone mentions?
+  🌦️  What's the weather like up there right now?
 
-  •  🚌  How do I get there by local bus, and what's the fare?
-  •  🛡️  Is it safe? Is it crowded on weekends?
-  •  🌄  Where's the hidden viewpoint everyone talks about?
-  •  ⛰️  How hard is the climb — am I prepared for it?
-  •  🌦️  What's the weather like up there right now?
-
-Kathmandu Hiker collects all of this from the hikers who've actually
-walked the trail, then surfaces it cleanly to anyone heading there
-next.  ✨
+This app collects all of that from the hikers who've walked the
+trail, and surfaces it cleanly to whoever heads there next.  ✨
 
 
 🙋 WHO IT'S FOR
 ───────────────
-
-  •  🏡  Locals  looking for a weekend escape from the valley.
-  •  🎒  Tourists  who want to do day hikes around Kathmandu
-     without hiring an expensive guide.
-  •  📝  Trail authors / power hikers  who want to share routes
-     and earn XP / level up as recognition.
-  •  👯  Hiking groups  organising a meetup on a specific weekend.
+🏡 Locals planning a weekend escape • 🎒 Tourists doing day hikes
+without a paid guide • 📝 Power hikers who want to share routes
+and level up • 👯 Groups organising a weekend meetup.
 
 
-🚀 WHAT YOU CAN DO IN THE APP
-─────────────────────────────
+🚀 KEY FEATURES
+───────────────
 
-  🏠  HOME
-  •   Browse all approved trails as a bento grid of cards
-  •   🌤️  Live weather ribbon for Kathmandu at the top
-  •   🔍  Search trails by name or location
-  •   🎚️  Filter by difficulty — Easy / Moderate / Hard /
-       Challenging
-  •   🔖  Save / unsave a trail with the bookmark icon
-  •   🗺️  Map view of every trail pinned over the Kathmandu valley
-  •   🚨  Emergency SOS sheet — Police, Ambulance, Tourist Police,
-       GPS-SMS, and a built-in siren that uses the phone's alarm
-       tone
+🏠  HOME  — Bento grid of trails, live weather ribbon, search,
+    difficulty filter, bookmark, map view, 🚨 emergency SOS sheet
+    (Police 100, Ambulance 102, Tourist Police 1144, GPS-SMS,
+    built-in siren).
 
-  🥾  TRAIL DETAIL
-  •   📸  Hero photo carousel with pinch-to-zoom full-screen viewer
-  •   📊  Quick stats card (Duration, Cost, Travel Mode)
-  •   🧭  "Start Navigation" deep-links directly to Google Maps
-       walking directions with a three-tier fallback so it works
-       on any device
-  •   🔖  Bookmark with one tap, mirrors back to Saved tab
-  •   📡  Live GPS hike tracker — start, watch live km, end &
-       claim XP
-  •   📋  Trail Details grid (Difficulty, Cost, Mode, Pickup,
-       Duration)
-  •   💬  Shared Experiences card (Best Seasons, Crowd Level,
-       Hidden Spot, Difficult Part — auto-parsed from the
-       AddTrail form)
-  •   🚌  How to Get There rail with real fare data
-  •   ☁️  Weather pill with current temp + condition
-  •   📅  Plan Hike — create a group event with date + max
-       attendees, notifies all your friends
-  •   🖼️  Trail photo gallery, with community-uploaded photos
-       mixed in
-  •   ⭐  Reviews — five-star rating slider, italic review cards;
-       the aggregate rating averages the author's seed + every
-       review
+🥾  TRAIL DETAIL  — Photo carousel with pinch-zoom, quick stats,
+    🧭 Start Navigation (Google Maps deep-link), 📡 live GPS
+    tracker, How-to-Get-There with real fares, ☁️ weather pill,
+    📅 Plan Hike, 🖼️ community gallery, ⭐ reviews with averaged
+    ratings.
 
-  ➕  ADD TRAIL  (4-step PageView)
-  •   📷  Photos  — multi-pick, at least one required
-  •   🥾  Difficulty  — four vertical cards (Easy / Moderate /
-       Hard / Challenging) with watermark icons
-  •   🚐  Transport details  — start point, bus pickup, fare
-       bracket, duration, searchable Google Map with text-to-pin
-       geocoding, facilities multi-select
-  •   ✨  Final details  — overall rating, best seasons, crowd
-       level, notable features and hazards as multi-select chips
-       (with exclusive "None" options), Quick Tips textarea
+➕  ADD TRAIL  — 4-step flow:
+    📷 Photos (mandatory) → 🥾 Difficulty → 🚐 Transport with
+    searchable map + facilities → ✨ Experience (rating, seasons,
+    crowd, features, hazards, tips).
 
-  👥  SOCIAL  (Community / Chats / Requests)
-  •   🌍  Community — featured upcoming hikes carousel + Recent
-       Activity feed (with a Clear button)
-  •   💬  Chats — friend list with avatar, last message preview,
-       online indicator, unread badge
-  •   🤝  Requests — search hikers by name, send / cancel /
-       accept friend requests with proper Sent state, pending
-       requests with Accept and Decline buttons
+👥  SOCIAL  — Three tabs:
+    🌍 Community (upcoming hikes + activity feed),
+    💬 Chats (1:1 messaging),
+    🤝 Requests (find hikers, send/cancel/accept).
 
-  👤  PROFILE
-  •   🖼️  Avatar, name, XP bar, hiker level
-  •   📥  Approved + pending submissions tabs
-  •   ✏️  Edit profile sheet
-  •   🏆  Achievements gallery
-  •   🛡️  Admin dashboard (for admin role only)
-  •   🚪  Sign out
-
-  🏅  ACHIEVEMENTS
-  •   🎚️  Hiker level progression (1–100)
-  •   📜  Titles:
-       🆕 New Hiker →
-       🌱 Beginner →
-       🚶 Trail Walker →
-       🧭 Pathfinder →
-       🏞️ Explorer →
-       ⛰️ Mountain Guide →
-       👑 Trail Master
-  •   ✨  XP awarded for submitting / having a trail approved /
-       posting a review / sharing a community photo / hosting a
-       group hike / completing tracked hikes
+👤  PROFILE  — Avatar, XP bar, hiker level, submissions, edit
+    sheet, 🏆 achievements, 🛡️ admin dashboard (admin role only).
 
 
-⚡ XP RULES  (lib/utils/ranking_manager.dart)
-────────────────────────────────────────────
+🏅 LEVELS & XP
+──────────────
+   📝   15  submit a trail
+   ✅   80  trail approved by admin
+   ⭐   10  post a review
+   📸   20  upload a community photo
+   📅   30  host a group hike
+   🚶   50  complete an Easy tracked hike
+   ⛰️  100  complete a Moderate / Hard / Challenging hike
 
-  📝   15  submitting a trail
-  ✅   80  having your trail approved by admin
-  ⭐   10  posting a review
-  📸   20  uploading a community photo
-  📅   30  hosting a group hike
-  🚶   50  completing a tracked hike on an Easy trail
-  ⛰️  100  completing a tracked hike on Moderate / Hard /
-           Challenging
-
-  💯 100 XP per level. 100 levels max.
+🆕 New Hiker → 🌱 Beginner → 🚶 Trail Walker → 🧭 Pathfinder →
+🏞️ Explorer → ⛰️ Mountain Guide → 👑 Trail Master
 
 
-🎨 DESIGN SYSTEM
-────────────────
-
-  •  🌲  Forest-green primary, moss-green accent in dark mode
-  •  🅰️  Lexend typography everywhere, six tiers
-  •  🎭  Material 3 token-based theme with full light + dark mode
-  •  🌙  Default theme on first launch:  dark
-  •  ✨  Skeuomorphic shadows on primary buttons, sunken inset
-        shadows on read-only cards, hairline outline borders
-  •  🧗  Premium outdoor-gear aesthetic — rugged but refined
+🎨 DESIGN
+─────────
+🌲 Forest-green primary, moss-green dark accent • 🅰️ Lexend
+throughout • 🌙 Dark mode by default • ✨ Skeuomorphic shadows on
+primary buttons, sunken cards, hairline borders • 🧗 Rugged but
+refined outdoor-gear feel.
 
 
 🛠️ TECH STACK
 ─────────────
-
-  •  💙  Flutter            — single codebase for Android + iOS
-  •  🔐  Firebase Auth      — email/password authentication
-  •  🔥  Cloud Firestore    — trails, users, reviews, events,
-                              chats, notifications, activity feed
-  •  📦  Firebase Storage   — trail photos, profile pictures,
-                              gallery
-  •  🗺️  google_maps_flutter — location picker + map view
-  •  📍  geocoding          — text-to-pin location search
-  •  🛰️  geolocator          — high-accuracy GPS hike tracking
-  •  🔗  url_launcher       — Google Maps deep-linking + SOS
-                              dialing
-  •  🖼️  cached_network_image, photo_view — galleries and zoom
-                              viewer
-  •  🔔  flutter_local_notifications, flutter_background_service
-                            — background hike tracking
-  •  🅰️  google_fonts       — Lexend
-  •  💾  shared_preferences — theme persistence
-  •  ☁️  OpenWeather API    — current trail weather
+💙 Flutter  •  🔥 Cloud Firestore  •  🔐 Firebase Auth
+📦 Firebase Storage  •  🗺️ Google Maps  •  📍 geocoding
+🛰️ geolocator (high-accuracy GPS)  •  🔗 url_launcher
+🔔 background_service + local_notifications  •  ☁️ OpenWeather
 
 
-🧪 HIKE TRACKING ALGORITHM
-──────────────────────────
+🧪 SMART HIKE TRACKING
+──────────────────────
+Distance is only added to your hike when ALL of these are true:
 
-A foreground high-accuracy GPS stream accumulates distance only when
-ALL of these are true for a sample:
+   🎯  Accuracy ≤ 30 m            (drop weak GPS fixes)
+   📏  Move    ≥ 2 m              (filter standing-still jitter)
+   🚫  Move    ≤ 80 m             (reject phantom jumps)
+   🐢  Speed   ≤ 8 km/h           (ignores vehicle travel)
 
-  1.  🎯  pos.accuracy  ≤  30 m         (drop weak fixes)
-  2.  📏  delta         ≥  2 m          (filter standing-still
-                                         jitter)
-  3.  🚫  delta         ≤  80 m         (reject phantom GPS jumps)
-  4.  🐢  speed         ≤  2.22 m/s     (≈ 8 km/h — ignores
-                                         vehicles)
+🚌 That's why the bus you took to the trailhead doesn't pad your
+   distance.
 
-🚌 This is what stops the bus you took to the trailhead from
-counting as part of your hike.
 
+💎 WHY IT'S DIFFERENT
+─────────────────────
+🇳🇵  Built for Nepal — NPR fares, bus pickups, Nepal SOS numbers.
+🏃  Not a Strava clone — community first, tracker second, no
+    leaderboard pressure.
+📵  Not a Facebook clone — no algorithmic feed, no public posts.
+🌍  Not an AllTrails clone — every trail is hiker-submitted and
+    admin-vetted, not scraped.
+
+
+═══════════════════════════════════════════════════════════════
+   🏔️  Made for the mountains, by the people who walk them.  🥾
+═══════════════════════════════════════════════════════════════
