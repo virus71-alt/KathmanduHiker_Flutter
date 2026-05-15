@@ -16,7 +16,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
@@ -26,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _busy = false;
   String? _error;
   String? _resetMsg;
+  bool _obscurePass = true;
 
   final _email = TextEditingController();
   final _pass = TextEditingController();
@@ -37,8 +39,20 @@ class _LoginScreenState extends State<LoginScreen> {
   String _dob = '';
   File? _profileImage;
 
+  late final AnimationController _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _fade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    )..forward();
+  }
+
   @override
   void dispose() {
+    _fade.dispose();
     _email.dispose();
     _pass.dispose();
     _name.dispose();
@@ -49,7 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _pickImage() async {
-    final x = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+    final x =
+        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
     if (x != null) setState(() => _profileImage = File(x.path));
   }
 
@@ -76,7 +91,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() => _busy = true);
     try {
-      await _auth.signInWithEmailAndPassword(email: _email.text.trim(), password: _pass.text);
+      await _auth.signInWithEmailAndPassword(
+          email: _email.text.trim(), password: _pass.text);
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -159,156 +175,645 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _toggleMode() {
+    AppFeedback.tap();
+    final current = ThemeController.instance.mode.value;
+    final next =
+        current == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    ThemeController.instance.set(next);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('🥾', style: TextStyle(fontSize: 48)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Kathmandu Hiker',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: colors.primary,
+      backgroundColor: scheme.surface,
+      body: Stack(
+        children: [
+          // Soft gradient backdrop — stronger contrast on dark, subtler in light.
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [
+                          const Color(0xFF0A0F12),
+                          scheme.surface,
+                          scheme.surfaceContainer,
+                        ]
+                      : [
+                          scheme.surface,
+                          scheme.surfaceContainerLow,
+                          scheme.surfaceContainer,
+                        ],
+                ),
+              ),
+            ),
+          ),
+          // Decorative blurred orb top-right — bigger, softer on dark.
+          Positioned(
+            top: -100,
+            right: -80,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: scheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -140,
+            left: -90,
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: scheme.tertiary.withValues(alpha: isDark ? 0.16 : 0.09),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: FadeTransition(
+                opacity: _fade,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _topBar(scheme, isDark),
+                    const SizedBox(height: 32),
+                    _brandHeader(scheme),
+                    const SizedBox(height: 28),
+                    _modeSegmented(scheme),
+                    const SizedBox(height: 22),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: SizeTransition(
+                          sizeFactor: anim,
+                          axisAlignment: -1,
+                          child: child,
+                        ),
+                      ),
+                      child: _isSignUp
+                          ? _signUpFields(scheme)
+                          : const SizedBox.shrink(),
                     ),
+                    _field(_email, 'Email',
+                        icon: Icons.alternate_email_rounded,
+                        keyboard: TextInputType.emailAddress),
+                    const SizedBox(height: 12),
+                    _passwordField(scheme),
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      _statusBanner(_error!, scheme.error, Icons.error_outline),
+                    ],
+                    if (_resetMsg != null) ...[
+                      const SizedBox(height: 14),
+                      _statusBanner(_resetMsg!, scheme.tertiary,
+                          Icons.mark_email_read_outlined),
+                    ],
+                    const SizedBox(height: 22),
+                    _primaryCta(scheme),
+                    const SizedBox(height: 8),
+                    if (!_isSignUp)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            AppFeedback.tap();
+                            _reset();
+                          },
+                          child: Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+                    _switchModeFooter(scheme),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Top bar: brand mark + theme toggle ──────────────────────────────────
+  Widget _topBar(ColorScheme scheme, bool isDark) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scheme.primary,
+                    scheme.primaryContainer,
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.primary.withValues(alpha: 0.32),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  _isSignUp ? 'Create your account 📝' : 'Welcome back 👋',
-                  style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+              child: Icon(Icons.terrain_rounded,
+                  size: 20, color: scheme.onPrimary),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Kathmandu Hiker',
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+        Tooltip(
+          message: isDark ? 'Switch to light mode' : 'Switch to dark mode',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(99),
+            onTap: _toggleMode,
+            child: Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                transitionBuilder: (c, a) =>
+                    RotationTransition(turns: a, child: c),
+                child: Icon(
+                  isDark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  key: ValueKey(isDark),
+                  color: scheme.primary,
+                  size: 20,
                 ),
               ),
-              const SizedBox(height: 24),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-              if (_isSignUp) ...[
-                Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      AppFeedback.tap();
-                      _pickImage();
-                    },
-                    child: CircleAvatar(
-                      radius: 56,
-                      backgroundColor: AppColors.surfaceVariant,
-                      backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
-                      child: _profileImage == null
-                          ? const Icon(Icons.add_a_photo, color: AppColors.primary, size: 32)
-                          : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _field(_name, '👤 Display Name'),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: () {
-                    AppFeedback.tap();
-                    _pickDob();
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: '🎂 Date of Birth'),
-                    child: Text(_dob.isEmpty ? 'Pick your date of birth' : _dob),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _field(_location, '📍 Location'),
-                const SizedBox(height: 10),
-                _field(_phone, '📞 Phone Number', keyboard: TextInputType.phone),
-                Row(
-                  children: [
-                    Switch(
-                      value: _showPhone,
-                      onChanged: (v) {
-                        AppFeedback.toggle();
-                        setState(() => _showPhone = v);
-                      },
-                    ),
-                    const Text('Show phone publicly'),
-                  ],
-                ),
-                _field(_insta, '📷 Instagram (optional)'),
-                const SizedBox(height: 10),
-              ],
+  Widget _brandHeader(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            _isSignUp ? 'JOIN THE COMMUNITY' : 'EXPLORE KATHMANDU',
+            style: TextStyle(
+              color: scheme.primary,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _isSignUp ? 'Create your account' : 'Welcome back, hiker',
+          style: TextStyle(
+            fontSize: 30,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+            color: scheme.onSurface,
+            letterSpacing: -0.6,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _isSignUp
+              ? 'Join the community and start logging trails.'
+              : 'Sign in to continue exploring Kathmandu.',
+          style: TextStyle(
+            fontSize: 14,
+            color: scheme.onSurfaceVariant,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
 
-              _field(_email, '📧 Email', keyboard: TextInputType.emailAddress),
-              const SizedBox(height: 10),
-              _field(_pass, '🔒 Password', obscure: true),
+  Widget _modeSegmented(ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          _segment(scheme, label: 'Log In', active: !_isSignUp, onTap: () {
+            if (_isSignUp) {
+              AppFeedback.tap();
+              setState(() {
+                _isSignUp = false;
+                _error = null;
+                _resetMsg = null;
+              });
+            }
+          }),
+          _segment(scheme, label: 'Sign Up', active: _isSignUp, onTap: () {
+            if (!_isSignUp) {
+              AppFeedback.tap();
+              setState(() {
+                _isSignUp = true;
+                _error = null;
+                _resetMsg = null;
+              });
+            }
+          }),
+        ],
+      ),
+    );
+  }
 
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: AppColors.error)),
-              ],
-              if (_resetMsg != null) ...[
-                const SizedBox(height: 12),
-                Text(_resetMsg!, style: const TextStyle(color: AppColors.secondary)),
-              ],
-
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        AppFeedback.success();
-                        _isSignUp ? _signUp() : _login();
-                      },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                ),
-                child: Text(
-                  _busy ? '⏳ Please wait...' : (_isSignUp ? '🚀 Sign Up' : '👉 Log In'),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (!_isSignUp)
-                TextButton(
-                  onPressed: () {
-                    AppFeedback.tap();
-                    _reset();
-                  },
-                  child: const Text('Forgot password?'),
-                ),
-              TextButton(
-                onPressed: () {
-                  AppFeedback.tap();
-                  setState(() {
-                    _isSignUp = !_isSignUp;
-                    _error = null;
-                    _resetMsg = null;
-                  });
-                },
-                child: Text(_isSignUp ? 'Already have an account? Log In' : "New here? Sign Up"),
-              ),
-            ],
+  Widget _segment(ColorScheme scheme,
+      {required String label,
+      required bool active,
+      required VoidCallback onTap}) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: active ? scheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.32),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? scheme.onPrimary : scheme.onSurfaceVariant,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),
     );
   }
 
+  Widget _signUpFields(ColorScheme scheme) {
+    return Column(
+      key: const ValueKey('signup'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: GestureDetector(
+            onTap: () {
+              AppFeedback.tap();
+              _pickImage();
+            },
+            child: Stack(
+              children: [
+                Container(
+                  width: 104,
+                  height: 104,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.surfaceContainerHighest,
+                    border: Border.all(
+                        color: scheme.outlineVariant, width: 2),
+                    image: _profileImage != null
+                        ? DecorationImage(
+                            image: FileImage(_profileImage!),
+                            fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: _profileImage == null
+                      ? Icon(Icons.person_outline_rounded,
+                          size: 44, color: scheme.onSurfaceVariant)
+                      : null,
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: scheme.primary,
+                      border: Border.all(color: scheme.surface, width: 2),
+                    ),
+                    child: Icon(Icons.camera_alt_rounded,
+                        size: 16, color: scheme.onPrimary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _field(_name, 'Display name',
+            icon: Icons.person_outline_rounded),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: () {
+            AppFeedback.tap();
+            _pickDob();
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            decoration: _fieldBox(scheme),
+            child: Row(
+              children: [
+                Icon(Icons.cake_outlined,
+                    size: 20, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Text(
+                  _dob.isEmpty ? 'Date of birth' : _dob,
+                  style: TextStyle(
+                    color: _dob.isEmpty
+                        ? scheme.onSurfaceVariant
+                        : scheme.onSurface,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _field(_location, 'Location',
+            icon: Icons.location_on_outlined),
+        const SizedBox(height: 12),
+        _field(_phone, 'Phone number',
+            icon: Icons.phone_outlined, keyboard: TextInputType.phone),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Switch(
+              value: _showPhone,
+              onChanged: (v) {
+                AppFeedback.toggle();
+                setState(() => _showPhone = v);
+              },
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Show phone publicly on profile',
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _field(_insta, 'Instagram (optional)',
+            icon: Icons.camera_alt_outlined),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   Widget _field(TextEditingController c, String label,
-      {bool obscure = false, TextInputType? keyboard}) {
+      {bool obscure = false,
+      TextInputType? keyboard,
+      IconData? icon}) {
+    final scheme = Theme.of(context).colorScheme;
     return TextField(
       controller: c,
       obscureText: obscure,
       keyboardType: keyboard,
-      decoration: InputDecoration(labelText: label),
+      style: TextStyle(color: scheme.onSurface, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: label,
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+        prefixIcon: icon != null
+            ? Icon(icon, size: 20, color: scheme.onSurfaceVariant)
+            : null,
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 1.6),
+        ),
+      ),
+    );
+  }
+
+  Widget _passwordField(ColorScheme scheme) {
+    return TextField(
+      controller: _pass,
+      obscureText: _obscurePass,
+      style: TextStyle(color: scheme.onSurface, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: 'Password',
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+        prefixIcon: Icon(Icons.lock_outline_rounded,
+            size: 20, color: scheme.onSurfaceVariant),
+        suffixIcon: IconButton(
+          onPressed: () {
+            AppFeedback.tap();
+            setState(() => _obscurePass = !_obscurePass);
+          },
+          icon: Icon(
+            _obscurePass
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+            color: scheme.onSurfaceVariant,
+            size: 20,
+          ),
+        ),
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 1.6),
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration _fieldBox(ColorScheme scheme) {
+    return BoxDecoration(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: scheme.outlineVariant),
+    );
+  }
+
+  Widget _statusBanner(String message, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                  color: color, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _primaryCta(ColorScheme scheme) {
+    return FilledButton(
+      onPressed: _busy
+          ? null
+          : () {
+              AppFeedback.success();
+              _isSignUp ? _signUp() : _login();
+            },
+      style: FilledButton.styleFrom(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        minimumSize: const Size.fromHeight(56),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        elevation: 0,
+      ),
+      child: _busy
+          ? SizedBox(
+              height: 22,
+              width: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: scheme.onPrimary,
+              ),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _isSignUp ? 'Create account' : 'Log in',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_rounded, size: 18),
+              ],
+            ),
+    );
+  }
+
+  Widget _switchModeFooter(ColorScheme scheme) {
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            _isSignUp
+                ? 'Already have an account?'
+                : "Don't have an account?",
+            style:
+                TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+          ),
+          TextButton(
+            onPressed: () {
+              AppFeedback.tap();
+              setState(() {
+                _isSignUp = !_isSignUp;
+                _error = null;
+                _resetMsg = null;
+              });
+            },
+            child: Text(
+              _isSignUp ? 'Log in' : 'Sign up',
+              style: TextStyle(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

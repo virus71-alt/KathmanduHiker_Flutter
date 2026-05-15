@@ -11,6 +11,7 @@ import 'screens/achievements_screen.dart';
 import 'screens/add_trail_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/chat_screen.dart';
+import 'screens/group_detail_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -27,11 +28,16 @@ class KathmanduHikerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Kathmandu Hiker',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      home: const AuthGate(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (_, mode, __) => MaterialApp(
+        title: 'Kathmandu Hiker',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: mode,
+        home: const AuthGate(),
+      ),
     );
   }
 }
@@ -75,6 +81,7 @@ class _RootShellState extends State<RootShell> {
   String? _chatFriendId;
   String _chatFriendName = '';
   String? _viewingProfileId;
+  String? _currentGroupId;
 
   // Live data
   List<Trail> _cloudHikes = [];
@@ -312,42 +319,81 @@ class _RootShellState extends State<RootShell> {
       });
   void _openProfile(String id) => setState(() => _viewingProfileId = id);
 
+  /// Wraps an overlay screen in a `PopScope` so the system back button
+  /// dismisses the overlay (returns to whatever shell was beneath) instead of
+  /// exiting the app.
+  Widget _withBackHandler(Widget child, VoidCallback onBack) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        onBack();
+      },
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Overlay screens — they sit above the bottom nav.
+    // Overlay screens — they sit above the bottom nav. Each is wrapped in
+    // PopScope so OS back is intercepted and routed to its close callback,
+    // preventing the app from exiting unexpectedly.
     if (_viewingProfileId != null) {
-      return PublicProfileScreen(
-        userId: _viewingProfileId!,
-        onBack: () => setState(() => _viewingProfileId = null),
-        onRemoveFriend: () async {
-          await _removeFriend(_viewingProfileId!);
-          if (mounted) setState(() => _viewingProfileId = null);
-        },
+      return _withBackHandler(
+        PublicProfileScreen(
+          userId: _viewingProfileId!,
+          onBack: () => setState(() => _viewingProfileId = null),
+          onRemoveFriend: () async {
+            await _removeFriend(_viewingProfileId!);
+            if (mounted) setState(() => _viewingProfileId = null);
+          },
+        ),
+        () => setState(() => _viewingProfileId = null),
       );
     }
     if (_chatFriendId != null) {
-      return ChatScreen(
-        currentUserId: _uid,
-        friendId: _chatFriendId!,
-        friendName: _chatFriendName,
-        onBack: () => setState(() => _chatFriendId = null),
-        onProfileClick: () => setState(() {
-          _viewingProfileId = _chatFriendId;
-          _chatFriendId = null;
-        }),
+      return _withBackHandler(
+        ChatScreen(
+          currentUserId: _uid,
+          friendId: _chatFriendId!,
+          friendName: _chatFriendName,
+          onBack: () => setState(() => _chatFriendId = null),
+          onProfileClick: () => setState(() {
+            _viewingProfileId = _chatFriendId;
+            _chatFriendId = null;
+          }),
+        ),
+        () => setState(() => _chatFriendId = null),
+      );
+    }
+    if (_currentGroupId != null) {
+      return _withBackHandler(
+        GroupDetailScreen(
+          groupId: _currentGroupId!,
+          currentUserId: _uid,
+          currentUserName: _userName,
+          currentUserPic: _userProfilePic,
+          onBack: () => setState(() => _currentGroupId = null),
+        ),
+        () => setState(() => _currentGroupId = null),
       );
     }
     if (_currentTrail != null) {
-      return TrailDetailScreen(
-        trail: _currentTrail!,
-        currentUserId: _uid,
-        currentUserName: _userName,
-        currentUserPic: _userProfilePic,
-        myFriends: _myFriends,
-        mySentRequests: _mySentRequests,
-        onBack: () => setState(() => _currentTrail = null),
-        onSendFriendRequest: _sendFriendRequest,
-        onCancelFriendRequest: _cancelFriendRequest,
+      return _withBackHandler(
+        TrailDetailScreen(
+          trail: _currentTrail!,
+          currentUserId: _uid,
+          currentUserName: _userName,
+          currentUserPic: _userProfilePic,
+          myFriends: _myFriends,
+          mySentRequests: _mySentRequests,
+          isFavorite: _favoriteIds.contains(_currentTrail!.id),
+          onBack: () => setState(() => _currentTrail = null),
+          onSendFriendRequest: _sendFriendRequest,
+          onCancelFriendRequest: _cancelFriendRequest,
+          onToggleFavorite: () => _toggleFavorite(_currentTrail!.id),
+        ),
+        () => setState(() => _currentTrail = null),
       );
     }
 
@@ -364,6 +410,7 @@ class _RootShellState extends State<RootShell> {
           showOnlyFavorites: _currentTab == 'Favorites',
           unreadNotificationCount: _myNotifications.where((n) => !n.isRead).length,
           userName: _userName,
+          userProfilePic: _userProfilePic,
           isLoading: _isLoading,
           onToggleFavorite: _toggleFavorite,
           onTrailClick: _openTrail,
@@ -402,13 +449,18 @@ class _RootShellState extends State<RootShell> {
       case 'Social':
         body = SocialScreen(
           currentUserId: _uid,
+          currentUserName: _userName,
+          currentUserPic: _userProfilePic,
           receivedRequests: _myReceivedRequests,
           friends: _myFriends,
           unreadChatIds: _myUnreadChatIds,
+          validTrailIds: {for (final t in _cloudHikes) t.id},
           onAccept: _acceptRequest,
           onReject: _rejectRequest,
           onChatClick: _openChat,
           onProfileClick: _openProfile,
+          onOpenGroup: (groupId) =>
+              setState(() => _currentGroupId = groupId),
           onFeedItemClick: (trailId) async {
             final d = await _db.collection('trails').doc(trailId).get();
             if (d.exists) _openTrail(Trail.fromDoc(d));
@@ -453,6 +505,7 @@ class _RootShellState extends State<RootShell> {
                 pendingHikes: {
                   for (final t in [..._adminPendingHikes, ..._cloudHikes]) t.id: t,
                 }.values.toList(),
+                currentAdminId: _uid,
                 onApprove: _approveTrail,
                 onDelete: _deleteTrail,
                 onUpdate: _updatePendingTrail,
@@ -464,13 +517,14 @@ class _RootShellState extends State<RootShell> {
         body = const SizedBox.shrink();
     }
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (_currentTab != 'Home') {
-          setState(() => _currentTab = _currentTab == 'Achievements' ? 'Profile' : 'Home');
-          return false;
-        }
-        return true;
+    final isOnHome = _currentTab == 'Home';
+    return PopScope(
+      canPop: isOnHome,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() {
+          _currentTab = _currentTab == 'Achievements' ? 'Profile' : 'Home';
+        });
       },
       child: Scaffold(
         body: SafeArea(child: body),
@@ -517,15 +571,16 @@ class _RootShellState extends State<RootShell> {
       ),
     ];
 
+    final chrome = AppChromeColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.chrome,
+        color: chrome.chrome,
         border: Border(
-          top: BorderSide(color: AppColors.chromeBorder),
+          top: BorderSide(color: chrome.chromeBorder),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -583,25 +638,31 @@ class _StitchNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.onSurfaceVariant.withOpacity(0.7);
+    final scheme = Theme.of(context).colorScheme;
+    final color = selected ? scheme.primary : scheme.onSurfaceVariant.withValues(alpha: 0.7);
     final iconWidget = Icon(
       selected ? tab.activeIcon : tab.icon,
       color: color,
       size: 24,
     );
+    final highlight = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.05);
     return InkWell(
       onTap: onTap,
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadius.base),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? Colors.black.withOpacity(0.05) : Colors.transparent,
+          color: selected ? highlight : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.base),
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 4,
                     offset: const Offset(0, 1),
                     spreadRadius: -1,
@@ -615,8 +676,8 @@ class _StitchNavItem extends StatelessWidget {
             tab.badge > 0
                 ? Badge(
                     label: Text('${tab.badge}'),
-                    backgroundColor: AppColors.tertiaryContainer,
-                    textColor: AppColors.onTertiaryContainer,
+                    backgroundColor: scheme.tertiaryContainer,
+                    textColor: scheme.onTertiaryContainer,
                     child: iconWidget,
                   )
                 : iconWidget,

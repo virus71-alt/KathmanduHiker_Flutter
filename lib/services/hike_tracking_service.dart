@@ -9,8 +9,22 @@ class HikeTrackingService {
   HikeTrackingService._();
   static final HikeTrackingService instance = HikeTrackingService._();
 
+  // 8 km/h ≈ 2.22 m/s. Anything above this is treated as vehicle travel and
+  // dropped from the hike total. We pick the lower end of the 8–10 km/h band
+  // so brisk hiking still counts but slow stop-and-go traffic does not.
+  static const double _maxHikingSpeedMps = 2.22;
+  // Drop points with poor fix quality — they cause phantom jumps that the
+  // speed filter alone can't catch when several bad samples line up.
+  static const double _minAccuracyMeters = 30;
+  // Two thresholds for the per-sample distance delta: too small (GPS noise)
+  // or too large (a jump that the speed filter should have caught but
+  // didn't — e.g. when the previous sample was very old).
+  static const double _minMoveMeters = 2.0;
+  static const double _maxJumpMeters = 80.0;
+
   StreamSubscription<Position>? _sub;
   Position? _last;
+  DateTime? _lastAt;
 
   final _isTracking = StreamController<bool>.broadcast();
   final _distance = StreamController<double>.broadcast();
@@ -37,6 +51,7 @@ class HikeTrackingService {
     _trailId = trailId;
     _distanceMeters = 0;
     _last = null;
+    _lastAt = null;
 
     _isTracking.add(true);
     _distance.add(0);
@@ -48,20 +63,38 @@ class HikeTrackingService {
         distanceFilter: 5,
       ),
     ).listen((pos) {
-      if (_last != null) {
+      final now = DateTime.now();
+      // Reject low-quality fixes outright — they cause phantom drift even
+      // when the user is standing still or moving slowly.
+      if (pos.accuracy.isFinite && pos.accuracy > _minAccuracyMeters) {
+        _last = pos;
+        _lastAt = now;
+        return;
+      }
+      if (_last != null && _lastAt != null) {
         final delta = Geolocator.distanceBetween(
           _last!.latitude,
           _last!.longitude,
           pos.latitude,
           pos.longitude,
         );
-        // Ignore GPS noise (jumps < 1.5m) to keep the total realistic.
-        if (delta > 1.5) {
+        final dtSec = now.difference(_lastAt!).inMilliseconds / 1000.0;
+        // Reported speed is unreliable on some devices, so derive it
+        // from the time/distance delta as well and take the larger of the
+        // two — being conservative keeps vehicle travel out of the total.
+        final reported = pos.speed.isFinite && pos.speed > 0 ? pos.speed : 0.0;
+        final derived = dtSec > 0 ? delta / dtSec : 0.0;
+        final speed = reported > derived ? reported : derived;
+        final withinHikingPace = speed > 0 && speed <= _maxHikingSpeedMps;
+        final sensibleMove =
+            delta >= _minMoveMeters && delta <= _maxJumpMeters;
+        if (sensibleMove && withinHikingPace) {
           _distanceMeters += delta;
           _distance.add(_distanceMeters);
         }
       }
       _last = pos;
+      _lastAt = now;
     });
     return true;
   }

@@ -138,53 +138,107 @@ class _ProfileScreenState extends State<ProfileScreen> {
     AppFeedback.tap();
     await showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surfaceContainerLowest,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetCtx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              alignment: Alignment.center,
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+      builder: (sheetCtx) {
+        final scheme = Theme.of(sheetCtx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 18, 24, 30),
+          child: ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.instance.mode,
+            builder: (_, mode, __) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
+                const SizedBox(height: 16),
+                Text('Settings',
+                    style: AppText.headlineMd(scheme.onSurface)),
+                const SizedBox(height: 16),
+                Text('APPEARANCE',
+                    style: AppText.labelSm(scheme.onSurfaceVariant)
+                        .copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                _themeChoice(mode),
+                const SizedBox(height: 20),
+                _settingsTile(
+                  icon: Icons.logout_rounded,
+                  label: 'Log Out',
+                  tint: scheme.error,
+                  onTap: () {
+                    AppFeedback.warning();
+                    Navigator.pop(sheetCtx);
+                    widget.onLogout();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _themeChoice(ThemeMode current) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget item(ThemeMode value, IconData icon, String label) {
+      final selected = current == value;
+      return Expanded(
+        child: Material(
+          color: selected ? scheme.primary : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            onTap: () {
+              AppFeedback.toggle();
+              ThemeController.instance.set(value);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                    color: selected ? Colors.transparent : scheme.outlineVariant),
+              ),
+              child: Column(
+                children: [
+                  Icon(icon,
+                      color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+                      size: 22),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    style: AppText.labelLg(selected
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            Text('Settings', style: AppText.headlineMd(AppColors.onSurface)),
-            const SizedBox(height: 12),
-            _settingsTile(
-              icon: Icons.emoji_events_outlined,
-              label: 'My Achievements',
-              onTap: () {
-                AppFeedback.tap();
-                Navigator.pop(sheetCtx);
-                widget.onAchievementsClick();
-              },
-            ),
-            const Divider(height: 1),
-            _settingsTile(
-              icon: Icons.logout_rounded,
-              label: 'Log Out',
-              tint: AppColors.error,
-              onTap: () {
-                AppFeedback.warning();
-                Navigator.pop(sheetCtx);
-                widget.onLogout();
-              },
-            ),
-          ],
+          ),
         ),
-      ),
+      );
+    }
+
+    return Row(
+      children: [
+        item(ThemeMode.light, Icons.light_mode_rounded, 'Light'),
+        const SizedBox(width: 10),
+        item(ThemeMode.dark, Icons.dark_mode_rounded, 'Dark'),
+        const SizedBox(width: 10),
+        item(ThemeMode.system, Icons.brightness_auto_rounded, 'Auto'),
+      ],
     );
   }
 
@@ -192,22 +246,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    Color tint = AppColors.primary,
+    Color? tint,
   }) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = tint ?? scheme.primary;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
-            Icon(icon, color: tint),
+            Icon(icon, color: color),
             const SizedBox(width: 14),
             Expanded(
               child: Text(label,
-                  style: AppText.labelLg(tint).copyWith(fontSize: 15)),
+                  style: AppText.labelLg(color).copyWith(fontSize: 15)),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.onSurfaceVariant),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -267,7 +322,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: const Icon(Icons.shield_outlined),
                 label: const Text('Admin Dashboard'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.secondary,
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.onSecondary,
                   minimumSize: const Size.fromHeight(52),
                 ),
               ),
@@ -290,27 +346,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _topBar() {
+    final chrome = AppChromeColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.chrome,
-        border: Border(bottom: BorderSide(color: AppColors.chromeBorder)),
+        color: chrome.chrome,
+        border: Border(bottom: BorderSide(color: chrome.chromeBorder)),
       ),
       padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile, 12, 8, 12),
       child: Row(
         children: [
           Expanded(
             child: Text('Profile',
-                style: AppText.headlineMd(AppColors.primary)
+                style: AppText.headlineMd(scheme.primary)
                     .copyWith(fontWeight: FontWeight.w800)),
           ),
           IconButton(
             onPressed: _saveOrEdit,
             icon: Icon(_editing ? Icons.check_rounded : Icons.edit_rounded,
-                color: AppColors.primary),
+                color: scheme.primary),
           ),
           IconButton(
             onPressed: _showSettings,
-            icon: const Icon(Icons.settings_rounded, color: AppColors.primary),
+            icon: Icon(Icons.settings_rounded, color: scheme.primary),
           ),
         ],
       ),
@@ -318,8 +376,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _profileCard(String levelLabel, int approvedCount) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: topoCardDecoration(radius: AppRadius.lg),
+      decoration: topoCardDecoration(context, radius: AppRadius.lg),
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
       child: Column(
         children: [
@@ -331,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 height: 110,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary, width: 3),
+                  border: Border.all(color: scheme.primary, width: 3),
                 ),
                 child: ClipOval(
                   child: _newImage != null
@@ -341,12 +400,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               imageUrl: widget.userProfilePic,
                               fit: BoxFit.cover,
                               placeholder: (_, __) => Container(
-                                  color: AppColors.surfaceContainerHigh),
+                                  color: scheme.surfaceContainerHigh),
                               errorWidget: (_, __, ___) => Container(
                                   color: AppColors.primaryFixed,
-                                  child: const Center(
+                                  child: Center(
                                       child: Icon(Icons.person,
-                                          size: 50, color: AppColors.primary))),
+                                          size: 50, color: scheme.primary))),
                             )
                           : Container(
                               color: AppColors.primaryFixed,
@@ -355,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   widget.userName.isNotEmpty
                                       ? widget.userName[0].toUpperCase()
                                       : '?',
-                                  style: AppText.headlineLg(AppColors.primary),
+                                  style: AppText.headlineLg(scheme.primary),
                                 ),
                               ),
                             ),
@@ -364,7 +423,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (_editing)
                 Positioned.fill(
                   child: Material(
-                    color: Colors.black.withOpacity(0.25),
+                    color: Colors.black.withValues(alpha: 0.25),
                     shape: const CircleBorder(),
                     child: InkWell(
                       customBorder: const CircleBorder(),
@@ -374,35 +433,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-              Positioned(
-                right: 8,
-                bottom: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryFixed,
-                    borderRadius: BorderRadius.circular(AppRadius.lg * 2),
-                    border: Border.all(color: AppColors.primary, width: 1.5),
-                  ),
-                  child: Text(
-                    levelLabel.split(' ').first,
-                    style: AppText.labelSm(AppColors.primary)
-                        .copyWith(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 14),
           Text(
             widget.userName,
-            style: AppText.headlineLg(AppColors.onSurface)
+            style: AppText.headlineLg(scheme.onSurface)
                 .copyWith(fontSize: 26, height: 1.1),
           ),
           const SizedBox(height: 4),
           Text(
             '$levelLabel • ${widget.userLocation.isEmpty ? "Kathmandu, NP" : widget.userLocation}',
-            style: AppText.bodyMd(AppColors.onSurfaceVariant),
+            style: AppText.bodyMd(scheme.onSurfaceVariant),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 18),
@@ -419,24 +461,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _statTile(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+        color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.outlineVariant),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         children: [
           Text(
             label,
-            style: AppText.labelSm(AppColors.onSurfaceVariant)
+            style: AppText.labelSm(scheme.onSurfaceVariant)
                 .copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: AppText.headlineMd(AppColors.primary)
+            style: AppText.headlineMd(scheme.primary)
                 .copyWith(fontWeight: FontWeight.w800, fontSize: 22),
           ),
         ],
@@ -473,7 +516,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
+                      color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(AppRadius.base),
                     ),
                     child: const Icon(Icons.emoji_events_rounded,
@@ -501,7 +544,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   borderRadius: BorderRadius.circular(99),
                   child: LinearProgressIndicator(
                     value: progress,
-                    backgroundColor: Colors.white.withOpacity(0.22),
+                    backgroundColor: Colors.white.withValues(alpha: 0.22),
                     color: AppColors.tertiaryFixed,
                     minHeight: 10,
                   ),
@@ -530,8 +573,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _detailsCard() {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: topoCardDecoration(),
+      decoration: topoCardDecoration(context),
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
@@ -545,7 +589,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               widget.userPhone.isEmpty ? 'Not provided' : widget.userPhone,
               trailing: Text(
                 widget.userShowPhone ? 'Public' : 'Private',
-                style: AppText.labelSm(AppColors.onSurfaceVariant),
+                style: AppText.labelSm(scheme.onSurfaceVariant),
               )),
           if (widget.userInsta.isNotEmpty) ...[
             _divider(),
@@ -555,7 +599,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text('BIO',
-                style: AppText.labelSm(AppColors.primary)
+                style: AppText.labelSm(scheme.primary)
                     .copyWith(fontWeight: FontWeight.w800)),
           ),
           const SizedBox(height: 4),
@@ -565,7 +609,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               widget.userBio.isEmpty
                   ? 'Ready for adventure!'
                   : widget.userBio,
-              style: AppText.bodyMd(AppColors.onSurface),
+              style: AppText.bodyMd(scheme.onSurface),
             ),
           ),
         ],
@@ -574,25 +618,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _detailRow(IconData icon, String text, {Widget? trailing}) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppColors.onSurfaceVariant),
+          Icon(icon, size: 18, color: scheme.onSurfaceVariant),
           const SizedBox(width: 10),
           Expanded(
-              child: Text(text, style: AppText.bodyMd(AppColors.onSurface))),
+              child: Text(text, style: AppText.bodyMd(scheme.onSurface))),
           if (trailing != null) trailing,
         ],
       ),
     );
   }
 
-  Widget _divider() => const Divider(height: 16, color: AppColors.outlineVariant);
+  Widget _divider() => Divider(
+      height: 16, color: Theme.of(context).colorScheme.outlineVariant);
 
   Widget _editForm() {
     return Container(
-      decoration: topoCardDecoration(),
+      decoration: topoCardDecoration(context),
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
@@ -638,6 +684,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _listTabs(int savedCount, int pendingCount) {
+    final scheme = Theme.of(context).colorScheme;
     Widget tab(String label, int count, int index) {
       final selected = _listTab == index;
       return Expanded(
@@ -651,7 +698,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: selected ? AppColors.primary : Colors.transparent,
+                  color: selected ? scheme.primary : Colors.transparent,
                   width: 2.5,
                 ),
               ),
@@ -661,15 +708,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Text(label,
                     style: AppText.labelLg(
-                        selected ? AppColors.primary : AppColors.onSurfaceVariant)),
+                        selected ? scheme.primary : scheme.onSurfaceVariant)),
                 if (count > 0) ...[
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
                     decoration: BoxDecoration(
                       color: selected
-                          ? AppColors.primary
-                          : AppColors.surfaceContainerHigh,
+                          ? scheme.primary
+                          : scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
                     child: Text(
@@ -678,8 +725,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                           color: selected
-                              ? Colors.white
-                              : AppColors.onSurfaceVariant),
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -699,6 +746,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   SliverList _submissionsList(List<Trail> trails, {bool isPending = false}) {
+    final scheme = Theme.of(context).colorScheme;
     if (trails.isEmpty) {
       return SliverList.list(children: [
         const SizedBox(height: 24),
@@ -710,11 +758,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
+                    color: scheme.primary.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.terrain_rounded,
-                      color: AppColors.primary, size: 36),
+                  child: Icon(Icons.terrain_rounded,
+                      color: scheme.primary, size: 36),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -722,7 +770,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ? 'No trails pending review.'
                       : 'No approved trails yet.\nTap + on Home to share one!',
                   textAlign: TextAlign.center,
-                  style: AppText.bodyMd(AppColors.onSurfaceVariant),
+                  style: AppText.bodyMd(scheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -738,12 +786,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final imageUrl = t.imageUrls.isNotEmpty
             ? t.imageUrls[0]
             : 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b';
-        final diff = difficultyColors(t.difficulty);
+        final diff = difficultyColors(context, t.difficulty);
         return Container(
           decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLowest,
+            color: scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppColors.outlineVariant),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           padding: const EdgeInsets.all(10),
           child: Row(
@@ -756,9 +804,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   height: 88,
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(
-                      width: 88, height: 88, color: AppColors.surfaceContainerHigh),
+                      width: 88, height: 88, color: scheme.surfaceContainerHigh),
                   errorWidget: (_, __, ___) => Container(
-                      width: 88, height: 88, color: AppColors.surfaceContainerHigh),
+                      width: 88, height: 88, color: scheme.surfaceContainerHigh),
                 ),
               ),
               const SizedBox(width: 12),
@@ -782,7 +830,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 6),
                     Text(
                       t.name,
-                      style: AppText.labelLg(AppColors.onSurface)
+                      style: AppText.labelLg(scheme.onSurface)
                           .copyWith(fontSize: 15),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -794,15 +842,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : t.description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppText.labelSm(AppColors.onSurfaceVariant),
+                      style: AppText.labelSm(scheme.onSurfaceVariant),
                     ),
                   ],
                 ),
               ),
               if (isPending)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded,
-                      color: AppColors.error),
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: scheme.error),
                   onPressed: () {
                     AppFeedback.warning();
                     widget.onDeletePending(t.id);
