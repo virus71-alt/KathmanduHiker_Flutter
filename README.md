@@ -1,124 +1,143 @@
-═══════════════════════════════════════════════════════════════
-              🏔️  KATHMANDU HIKER  🏔️
-   The community trail companion for the Himalayas
-═══════════════════════════════════════════════════════════════
+<div align="center">
 
+# 🏔️ Kathmandu Hiker 🏔️
 
-🌿 WHAT IT IS
-─────────────
-Kathmandu Hiker is a community-driven hiking app for the Kathmandu
-Valley and the surrounding Himalayan foothills. It's three things
-in one:
+### *The community trail companion for the Himalayas*
 
-  📍  A crowdsourced trail guide   (anyone submits, admin approves)
-  🛰️  A live GPS hike tracker      (bus & car travel auto-filtered)
-  👥  A small hiking social network (friends, chats, group hikes)
+[![Flutter](https://img.shields.io/badge/Flutter-3.22+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth%20%7C%20Firestore%20%7C%20Storage-FFA000?logo=firebase&logoColor=white)](https://firebase.google.com)
+[![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Android-success)](https://flutter.dev)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#)
 
+</div>
 
-🎯 THE PROBLEM
-──────────────
-Kathmandu has dozens of casual day-hikes — Shivapuri, Champadevi,
-Nagarjun, Phulchowki, Chandragiri — but info is scattered across
-blogs, WhatsApp groups and tribal knowledge. Hikers can't easily
-answer:
+---
 
-  🚌  How do I get there by local bus, and the fare?
-  ⛰️  How hard is the climb, and is it crowded?
-  🌄  Where's that hidden viewpoint everyone mentions?
-  🌦️  What's the weather like up there right now?
+## 🌿 What it is
 
-This app collects all of that from the hikers who've walked the
-trail, and surfaces it cleanly to whoever heads there next.  ✨
+**Kathmandu Hiker** is a community-driven hiking app for the Kathmandu Valley and the surrounding Himalayan foothills. It blends **three things** into one product:
 
+- 📍 **A crowdsourced trail guide** — anyone can submit a trail, admin approves
+- 🛰️ **A live GPS hike tracker** — bus & car travel automatically filtered out
+- 👥 **A small hiking social network** — friends, chats, group hikes
 
-🙋 WHO IT'S FOR
-───────────────
-🏡 Locals planning a weekend escape • 🎒 Tourists doing day hikes
-without a paid guide • 📝 Power hikers who want to share routes
-and level up • 👯 Groups organising a weekend meetup.
+---
 
+## 🎯 The problem it solves
 
-🚀 KEY FEATURES
-───────────────
+Kathmandu has dozens of casual day-hikes — Shivapuri, Champadevi, Nagarjun, Phulchowki, Chandragiri — but the information is scattered across blogs, WhatsApp groups, and tribal knowledge. Hikers can't easily answer:
 
-🏠  HOME  — Bento grid of trails, live weather ribbon, search,
-    difficulty filter, bookmark, map view, 🚨 emergency SOS sheet
-    (Police 100, Ambulance 102, Tourist Police 1144, GPS-SMS,
-    built-in siren).
+| Question | Why it matters |
+|---|---|
+| 🚌 How do I get there by local bus, and the fare? | Saves money + planning time |
+| ⛰️ How hard is the climb, and is it crowded? | Avoid disappointment |
+| 🌄 Where's that hidden viewpoint everyone mentions? | The good stuff |
+| 🌦️ What's the weather like up there right now? | Stay safe |
 
-🥾  TRAIL DETAIL  — Photo carousel with pinch-zoom, quick stats,
-    🧭 Start Navigation (Google Maps deep-link), 📡 live GPS
-    tracker, How-to-Get-There with real fares, ☁️ weather pill,
-    📅 Plan Hike, 🖼️ community gallery, ⭐ reviews with averaged
-    ratings.
+This app collects all of that from the hikers who've actually walked the trail, and surfaces it cleanly to whoever heads there next. ✨
 
-➕  ADD TRAIL  — 4-step flow:
-    📷 Photos (mandatory) → 🥾 Difficulty → 🚐 Transport with
-    searchable map + facilities → ✨ Experience (rating, seasons,
-    crowd, features, hazards, tips).
+---
 
-👥  SOCIAL  — Three tabs:
-    🌍 Community (upcoming hikes + activity feed),
-    💬 Chats (1:1 messaging),
-    🤝 Requests (find hikers, send/cancel/accept).
+## 🙋 Who it's for
 
-👤  PROFILE  — Avatar, XP bar, hiker level, submissions, edit
-    sheet, 🏆 achievements, 🛡️ admin dashboard (admin role only).
+- 🏡 **Locals** planning a weekend escape
+- 🎒 **Tourists** doing day hikes without a paid guide
+- 📝 **Power hikers** who want to share routes and level up
+- 👯 **Hiking groups** organising a weekend meetup
 
+---
 
-🏅 LEVELS & XP
-──────────────
-   📝   15  submit a trail
-   ✅   80  trail approved by admin
-   ⭐   10  post a review
-   📸   20  upload a community photo
-   📅   30  host a group hike
-   🚶   50  complete an Easy tracked hike
-   ⛰️  100  complete a Moderate / Hard / Challenging hike
+## 🚀 Key features
 
-🆕 New Hiker → 🌱 Beginner → 🚶 Trail Walker → 🧭 Pathfinder →
-🏞️ Explorer → ⛰️ Mountain Guide → 👑 Trail Master
+### 🏠 Home
+Bento grid of trails, live weather ribbon, search, difficulty filter, bookmark, map view, and a **🚨 emergency SOS sheet** (Police `100`, Ambulance `102`, Tourist Police `1144`, GPS-SMS, built-in siren).
 
+### 🥾 Trail Detail
+Photo carousel with pinch-zoom, quick stats card, **🧭 Start Navigation** (Google Maps deep-link with 3-tier fallback), **📡 live GPS tracker**, *How to Get There* with real fares, **☁️ weather pill**, **📅 Plan Hike**, **🖼️ community gallery**, and **⭐ reviews with averaged ratings**.
 
-🎨 DESIGN
-─────────
-🌲 Forest-green primary, moss-green dark accent • 🅰️ Lexend
-throughout • 🌙 Dark mode by default • ✨ Skeuomorphic shadows on
-primary buttons, sunken cards, hairline borders • 🧗 Rugged but
-refined outdoor-gear feel.
+### ➕ Add Trail (4-step flow)
+1. **📷 Photos** — mandatory, multi-pick
+2. **🥾 Difficulty** — Easy / Moderate / Hard / Challenging
+3. **🚐 Transport** — start point, bus pickup, fare bracket, duration, searchable map
+4. **✨ Experience** — rating, seasons, crowd, features, hazards, tips
 
+### 👥 Social
+- 🌍 **Community** — featured upcoming hikes + activity feed
+- 💬 **Chats** — 1:1 messaging with unread badges
+- 🤝 **Requests** — find hikers, send / cancel / accept friend requests
 
-🛠️ TECH STACK
-─────────────
-💙 Flutter  •  🔥 Cloud Firestore  •  🔐 Firebase Auth
-📦 Firebase Storage  •  🗺️ Google Maps  •  📍 geocoding
-🛰️ geolocator (high-accuracy GPS)  •  🔗 url_launcher
-🔔 background_service + local_notifications  •  ☁️ OpenWeather
+### 👤 Profile
+Avatar, XP bar, hiker level, submissions, edit sheet, **🏆 achievements**, and **🛡️ admin dashboard** (admin role only).
 
+---
 
-🧪 SMART HIKE TRACKING
-──────────────────────
-Distance is only added to your hike when ALL of these are true:
+## 🏅 Levels & XP
 
-   🎯  Accuracy ≤ 30 m            (drop weak GPS fixes)
-   📏  Move    ≥ 2 m              (filter standing-still jitter)
-   🚫  Move    ≤ 80 m             (reject phantom jumps)
-   🐢  Speed   ≤ 8 km/h           (ignores vehicle travel)
+| XP | Action |
+|---:|:---|
+| 📝 **15** | Submit a trail |
+| ✅ **80** | Trail approved by admin |
+| ⭐ **10** | Post a review |
+| 📸 **20** | Upload a community photo |
+| 📅 **30** | Host a group hike |
+| 🚶 **50** | Complete an Easy tracked hike |
+| ⛰️ **100** | Complete a Moderate / Hard / Challenging hike |
 
-🚌 That's why the bus you took to the trailhead doesn't pad your
-   distance.
+**Title progression:**
+🆕 New Hiker → 🌱 Beginner → 🚶 Trail Walker → 🧭 Pathfinder → 🏞️ Explorer → ⛰️ Mountain Guide → 👑 Trail Master
 
+---
 
-💎 WHY IT'S DIFFERENT
-─────────────────────
-🇳🇵  Built for Nepal — NPR fares, bus pickups, Nepal SOS numbers.
-🏃  Not a Strava clone — community first, tracker second, no
-    leaderboard pressure.
-📵  Not a Facebook clone — no algorithmic feed, no public posts.
-🌍  Not an AllTrails clone — every trail is hiker-submitted and
-    admin-vetted, not scraped.
+## 🎨 Design
 
+- 🌲 **Forest-green primary**, moss-green dark accent
+- 🅰️ **Lexend** typography across six tiers
+- 🌙 **Dark mode by default**, full light/dark theming via Material 3
+- ✨ Skeuomorphic shadows on primary buttons, sunken cards, hairline borders
+- 🧗 Rugged but refined outdoor-gear feel
 
-═══════════════════════════════════════════════════════════════
-   🏔️  Made for the mountains, by the people who walk them.  🥾
-═══════════════════════════════════════════════════════════════
+---
+
+## 🛠️ Tech stack
+
+| | |
+|---|---|
+| **Framework** | 💙 Flutter |
+| **Backend** | 🔥 Cloud Firestore · 🔐 Firebase Auth · 📦 Firebase Storage |
+| **Maps** | 🗺️ google_maps_flutter · 📍 geocoding |
+| **Location** | 🛰️ geolocator (high-accuracy GPS) |
+| **Integrations** | 🔗 url_launcher · ☁️ OpenWeather API |
+| **Background** | 🔔 flutter_background_service · flutter_local_notifications |
+| **UI** | 🖼️ cached_network_image · photo_view · google_fonts |
+
+---
+
+## 🧪 Smart hike tracking
+
+Distance is only added to your hike when **all** of these are true for a GPS sample:
+
+| Check | Rule | Why |
+|---|---|---|
+| 🎯 Accuracy | `≤ 30 m` | Drop weak GPS fixes |
+| 📏 Move | `≥ 2 m` | Filter standing-still jitter |
+| 🚫 Move | `≤ 80 m` | Reject phantom GPS jumps |
+| 🐢 Speed | `≤ 8 km/h` | Ignore vehicle travel |
+
+> 🚌 *That's why the bus you took to the trailhead doesn't pad your distance.*
+
+---
+
+## 💎 Why it's different
+
+- 🇳🇵 **Built for Nepal** — NPR fare brackets, bus pickup info, Nepal SOS numbers (100/102/1144)
+- 🏃 **Not a Strava clone** — community first, tracker second. No competitive leaderboard pressure.
+- 📵 **Not a Facebook clone** — no algorithmic feed, no public timeline, no public posts
+- 🌍 **Not an AllTrails clone** — every trail is hiker-submitted and admin-vetted, not scraped from open data
+
+---
+
+<div align="center">
+
+### 🏔️ Made for the mountains, by the people who walk them. 🥾
+
+</div>
