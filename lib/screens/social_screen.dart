@@ -10,8 +10,6 @@ import '../utils/feedback.dart';
 
 class SocialScreen extends StatefulWidget {
   final String currentUserId;
-  final String currentUserName;
-  final String currentUserPic;
   final List<String> receivedRequests;
   final List<String> friends;
   final List<String> unreadChatIds;
@@ -23,13 +21,10 @@ class SocialScreen extends StatefulWidget {
   final void Function(String id, String name) onChatClick;
   final void Function(String id) onProfileClick;
   final void Function(String trailId) onFeedItemClick;
-  final void Function(String groupId) onOpenGroup;
 
   const SocialScreen({
     super.key,
     required this.currentUserId,
-    required this.currentUserName,
-    required this.currentUserPic,
     required this.receivedRequests,
     required this.friends,
     required this.unreadChatIds,
@@ -38,7 +33,6 @@ class SocialScreen extends StatefulWidget {
     required this.onChatClick,
     required this.onProfileClick,
     required this.onFeedItemClick,
-    required this.onOpenGroup,
     this.validTrailIds = const {},
   });
 
@@ -51,19 +45,15 @@ class _SocialScreenState extends State<SocialScreen> {
   final _pageCtl = PageController();
   int _page = 0;
 
-  // Tab order: Community / Chats / Groups / Requests
-  static const _tabs = ['Community', 'Chats', 'Groups', 'Requests'];
+  // Tab order: Community / Chats / Requests
+  static const _tabs = ['Community', 'Chats', 'Requests'];
 
   List<SocialUser> _friendProfiles = [];
   List<SocialUser> _requestProfiles = [];
   List<HikeEvent> _communityEvents = [];
-  List<_GroupRow> _myGroups = [];
-  List<_GroupRow> _discoverGroups = [];
   List<_ActivityRow> _activities = [];
   bool _loading = true;
   StreamSubscription? _eventsSub;
-  StreamSubscription? _groupsSub;
-  StreamSubscription? _discoverSub;
   StreamSubscription? _activitySub;
 
   // Search state for the Requests tab.
@@ -92,34 +82,6 @@ class _SocialScreenState extends State<SocialScreen> {
           .where((e) => widget.validTrailIds.contains(e.trailId))
           .toList());
     });
-    _groupsSub = _db
-        .collection('groups')
-        .where('members', arrayContains: widget.currentUserId)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      final list = s.docs.map(_groupRowFromDoc).toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      setState(() => _myGroups = list);
-    }, onError: (_) {
-      // Groups can fail to load if rules block reads — fail quietly.
-    });
-    // Discover Groups — every public group, then we filter out the ones the
-    // user is already a member of client-side. Limited so the listener stays
-    // cheap; "See All" would page through more.
-    _discoverSub = _db
-        .collection('groups')
-        .orderBy('createdAt', descending: true)
-        .limit(40)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      final list = s.docs
-          .map(_groupRowFromDoc)
-          .where((g) => !g.isMember)
-          .toList();
-      setState(() => _discoverGroups = list);
-    }, onError: (_) {});
     // Community feed: pulls the global `activities` stream that records when
     // admin approves trails. Each item links back to the trail.
     _activitySub = _db
@@ -144,20 +106,6 @@ class _SocialScreenState extends State<SocialScreen> {
             );
           }).toList());
     }, onError: (_) {});
-  }
-
-  _GroupRow _groupRowFromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
-    final data = d.data() ?? {};
-    final members = ((data['members'] as List?) ?? const []).cast<String>();
-    return _GroupRow(
-      id: d.id,
-      name: (data['name'] ?? '') as String,
-      description: (data['description'] ?? '') as String,
-      memberCount: members.length,
-      createdAt: ((data['createdAt'] ?? 0) as num).toInt(),
-      isHost: (data['creatorId'] ?? '') == widget.currentUserId,
-      isMember: members.contains(widget.currentUserId),
-    );
   }
 
   @override
@@ -207,8 +155,6 @@ class _SocialScreenState extends State<SocialScreen> {
   @override
   void dispose() {
     _eventsSub?.cancel();
-    _groupsSub?.cancel();
-    _discoverSub?.cancel();
     _activitySub?.cancel();
     _pageCtl.dispose();
     _searchCtl.dispose();
@@ -298,7 +244,6 @@ class _SocialScreenState extends State<SocialScreen> {
             children: [
               _communityPage(),
               _chatsPage(),
-              _groupsPage(),
               _requestsPage(),
             ],
           ),
@@ -347,8 +292,6 @@ class _SocialScreenState extends State<SocialScreen> {
       case 1:
         return 'Direct messages with your hiking friends.';
       case 2:
-        return 'Trekking groups and upcoming hikes.';
-      case 3:
         return 'Friend requests and new connections.';
       default:
         return '';
@@ -361,7 +304,6 @@ class _SocialScreenState extends State<SocialScreen> {
     final counts = <int>[
       _activities.length,
       widget.unreadChatIds.length,
-      _myGroups.length,
       _requestProfiles.length,
     ];
     return Padding(
@@ -380,10 +322,9 @@ class _SocialScreenState extends State<SocialScreen> {
               Expanded(
                 child: _tabButton(
                   _tabs[i],
-                  // Show badge only on tabs where a count is meaningful and
-                  // non-trivial (we don't want the Groups tab badge to be
-                  // distracting when the user is in a few groups).
-                  i == 1 || i == 3 ? counts[i] : 0,
+                  // Badge only on the two tabs where a count is actionable:
+                  // unread chats and pending friend requests.
+                  i == 1 || i == 2 ? counts[i] : 0,
                   i,
                 ),
               ),
@@ -924,422 +865,6 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  // ─── Groups page ────────────────────────────────────────────────────────
-  Widget _groupsPage() {
-    final scheme = Theme.of(context).colorScheme;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
-          AppSpacing.stackSm, AppSpacing.marginMobile, AppSpacing.stackLg),
-      children: [
-        // Create new group CTA — primary-tinted card with leading icon disc.
-        Material(
-          color: scheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            onTap: _openCreateGroup,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.add_rounded,
-                        color: scheme.primary, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Create New Group',
-                            style: AppText.labelLg(scheme.onSurface).copyWith(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Start a community for your next trek',
-                          style:
-                              AppText.labelSm(scheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded,
-                      color: scheme.onSurfaceVariant),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: AppSpacing.stackMd),
-        _sectionRow('Your Groups',
-            _myGroups.isEmpty ? null : '${_myGroups.length}'),
-        const SizedBox(height: AppSpacing.stackSm),
-        if (_myGroups.isEmpty)
-          _smallEmpty(Icons.groups_2_rounded, 'No groups yet',
-              'Tap Create New Group above to start one.')
-        else
-          ..._myGroups.map(_myGroupCard),
-
-        const SizedBox(height: AppSpacing.stackMd),
-        _sectionRow('Discover Groups',
-            _discoverGroups.isEmpty ? null : '${_discoverGroups.length}'),
-        const SizedBox(height: AppSpacing.stackSm),
-        if (_discoverGroups.isEmpty)
-          _smallEmpty(Icons.travel_explore_rounded, 'Nothing to discover yet',
-              'Newly-created public groups will appear here for you to join.')
-        else
-          ..._discoverGroups.map(_discoverGroupCard),
-
-        const SizedBox(height: AppSpacing.stackMd),
-        _sectionRow('Upcoming Hikes',
-            _communityEvents.isEmpty ? null : '${_communityEvents.length}'),
-        const SizedBox(height: AppSpacing.stackSm),
-        if (_communityEvents.isEmpty)
-          _smallEmpty(Icons.terrain_rounded, 'No community hikes yet',
-              'When someone hosts a hike, it will show up here.')
-        else
-          ..._communityEvents.map(_groupHikeCard),
-      ],
-    );
-  }
-
-  // Premium discover-group row: avatar disc, name, description preview,
-  // member count + Join button. Tapping anywhere else opens the detail screen
-  // (read-only when not yet a member).
-  Widget _discoverGroupCard(_GroupRow g) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          onTap: () {
-            AppFeedback.tap();
-            widget.onOpenGroup(g.id);
-          },
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        scheme.primary,
-                        scheme.primaryContainer,
-                      ],
-                    ),
-                  ),
-                  child: Icon(Icons.terrain_rounded,
-                      color: scheme.onPrimary, size: 26),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        g.name.isEmpty ? 'Unnamed group' : g.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        g.description.isEmpty
-                            ? '${g.memberCount} member${g.memberCount == 1 ? '' : 's'}'
-                            : g.description,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.labelSm(scheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                FilledButton.icon(
-                  onPressed: () => _joinGroup(g.id),
-                  icon: const Icon(Icons.group_add_rounded, size: 16),
-                  label: const Text('Join'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    minimumSize: const Size(0, 38),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _joinGroup(String groupId) async {
-    AppFeedback.success();
-    try {
-      await _db.collection('groups').doc(groupId).update({
-        'members': FieldValue.arrayUnion([widget.currentUserId]),
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Joined the group.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not join group: $e')),
-        );
-      }
-    }
-  }
-
-  Widget _myGroupCard(_GroupRow g) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          onTap: () {
-            AppFeedback.tap();
-            widget.onOpenGroup(g.id);
-          },
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        scheme.primary,
-                        scheme.primaryContainer,
-                      ],
-                    ),
-                  ),
-                  child: Icon(Icons.groups_2_rounded,
-                      color: scheme.onPrimary, size: 26),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              g.name.isEmpty ? 'Unnamed group' : g.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: scheme.onSurface,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          if (g.isHost) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: scheme.tertiaryContainer,
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                              child: Text(
-                                'HOST',
-                                style: AppText.labelSm(
-                                        scheme.onTertiaryContainer)
-                                    .copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 9.5,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.group_rounded,
-                              size: 14, color: scheme.onSurfaceVariant),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              '${g.memberCount} member${g.memberCount == 1 ? '' : 's'}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppText.labelSm(scheme.onSurfaceVariant),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded,
-                    color: scheme.onSurfaceVariant),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _groupHikeCard(HikeEvent e) {
-    final isHost = e.creatorId == widget.currentUserId;
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        elevation: 1,
-        shadowColor: Colors.black.withValues(alpha: 0.06),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          onTap: () {
-            AppFeedback.tap();
-            widget.onFeedItemClick(e.trailId);
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(AppRadius.md)),
-                      child: Container(
-                        height: 110,
-                        color: scheme.primaryContainer,
-                        child: Center(
-                          child: Icon(Icons.landscape_rounded,
-                              size: 56, color: scheme.onPrimaryContainer),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 14,
-                      bottom: 10,
-                      right: 14,
-                      child: Text(
-                        e.trailName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.headlineMd(Colors.white)
-                            .copyWith(fontSize: 17, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.92),
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          '${e.attendees.length}/${e.maxHikers}',
-                          style: AppText.labelSm(scheme.primary)
-                              .copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_today_rounded,
-                          size: 14, color: scheme.onSurfaceVariant),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          e.dateText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.labelSm(scheme.onSurfaceVariant),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (isHost)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: scheme.tertiaryContainer,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            'You host',
-                            style: AppText.labelSm(scheme.onTertiaryContainer)
-                                .copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   // ─── Requests page ──────────────────────────────────────────────────────
   Widget _requestsPage() {
@@ -1573,220 +1098,6 @@ class _SocialScreenState extends State<SocialScreen> {
     );
   }
 
-  // ─── Create Group sheet ─────────────────────────────────────────────────
-  // Facebook-style: anyone can create a group. A name is required; description
-  // is optional. Inviting friends is optional too — you can create an empty
-  // group with just yourself, then others can discover and join from the
-  // "Discover Groups" list.
-  Future<void> _openCreateGroup() async {
-    AppFeedback.tap();
-    final nameCtl = TextEditingController();
-    final descCtl = TextEditingController();
-    final invited = <String>{};
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetCtx) => StatefulBuilder(
-        builder: (_, setSheet) {
-          final scheme = Theme.of(sheetCtx).colorScheme;
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 16,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: scheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text('Create a new group',
-                    style: AppText.headlineMd(scheme.onSurface)),
-                const SizedBox(height: 4),
-                Text(
-                  'Build a community around a route, peak, or interest. Anyone can join later.',
-                  style: AppText.bodyMd(scheme.onSurfaceVariant)
-                      .copyWith(fontSize: 13, height: 1.4),
-                ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: nameCtl,
-                  onChanged: (_) => setSheet(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Group name *',
-                    hintText: 'e.g. Kathmandu Valley Sunrise Hikers',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descCtl,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    hintText:
-                        'What is this group about? Who should join?',
-                  ),
-                ),
-                if (_friendProfiles.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('Invite friends (optional)',
-                            style: AppText.labelLg(scheme.onSurface)
-                                .copyWith(fontWeight: FontWeight.w800)),
-                      ),
-                      if (invited.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: scheme.primary,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            '${invited.length} selected',
-                            style: TextStyle(
-                              color: scheme.onPrimary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: _friendProfiles.length,
-                      separatorBuilder: (_, __) => Divider(
-                        height: 1,
-                        color: scheme.outlineVariant,
-                      ),
-                      itemBuilder: (_, i) {
-                        final f = _friendProfiles[i];
-                        final isSel = invited.contains(f.id);
-                        return InkWell(
-                          onTap: () {
-                            AppFeedback.toggle();
-                            setSheet(() {
-                              if (isSel) {
-                                invited.remove(f.id);
-                              } else {
-                                invited.add(f.id);
-                              }
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: Row(
-                              children: [
-                                _avatar(f.profilePic, f.name, size: 36),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(f.name,
-                                      style: AppText.bodyMd(scheme.onSurface)),
-                                ),
-                                Checkbox(
-                                  value: isSel,
-                                  onChanged: (_) {
-                                    AppFeedback.toggle();
-                                    setSheet(() {
-                                      if (isSel) {
-                                        invited.remove(f.id);
-                                      } else {
-                                        invited.add(f.id);
-                                      }
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                FilledButton.icon(
-                  onPressed: nameCtl.text.trim().isEmpty
-                      ? null
-                      : () async {
-                          AppFeedback.success();
-                          final newId = await _createGroup(
-                            name: nameCtl.text.trim(),
-                            description: descCtl.text.trim(),
-                            invitedFriendIds: invited.toList(),
-                          );
-                          if (sheetCtx.mounted) {
-                            Navigator.pop(sheetCtx);
-                            if (newId != null) widget.onOpenGroup(newId);
-                          }
-                        },
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
-                  ),
-                  icon: const Icon(Icons.group_add_rounded),
-                  label: const Text('Create Group'),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-    nameCtl.dispose();
-    descCtl.dispose();
-  }
-
-  Future<String?> _createGroup({
-    required String name,
-    String description = '',
-    List<String> invitedFriendIds = const [],
-  }) async {
-    if (name.isEmpty) return null;
-    final members = <String>{widget.currentUserId, ...invitedFriendIds}.toList();
-    final ref = await _db.collection('groups').add({
-      'name': name,
-      'description': description,
-      'creatorId': widget.currentUserId,
-      'creatorName': widget.currentUserName,
-      'members': members,
-      'isPublic': true,
-      'createdAt': DateTime.now().millisecondsSinceEpoch,
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(invitedFriendIds.isEmpty
-                ? 'Group "$name" created — invite people to join.'
-                : 'Group "$name" created with ${members.length} member${members.length == 1 ? '' : 's'}.')),
-      );
-    }
-    return ref.id;
-  }
 
   // ─── Shared primitives ──────────────────────────────────────────────────
   Widget _avatar(String url, String name, {double size = 40}) {
@@ -1892,25 +1203,6 @@ class _SocialScreenState extends State<SocialScreen> {
     }
     return '${(diff.inDays / 365).floor()} year${diff.inDays >= 730 ? "s" : ""} ago';
   }
-}
-
-class _GroupRow {
-  final String id;
-  final String name;
-  final String description;
-  final int memberCount;
-  final int createdAt;
-  final bool isHost;
-  final bool isMember;
-  const _GroupRow({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.memberCount,
-    required this.createdAt,
-    required this.isHost,
-    required this.isMember,
-  });
 }
 
 class _ActivityRow {

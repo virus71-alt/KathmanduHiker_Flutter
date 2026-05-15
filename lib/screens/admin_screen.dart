@@ -78,10 +78,10 @@ class AdminScreen extends StatelessWidget {
   // ─── Developer "danger zone" — Wipe Database ────────────────────────────
   // Lets an admin reset Firestore back to a clean state in one tap. This
   // deletes all docs in `users` (except the current admin), `trails`,
-  // `events`, `activities`, `groups` (and their `posts` subcollections),
-  // and `hikes`. Firebase Auth accounts are NOT touched — those have to be
-  // removed manually from the Firebase console because the Admin SDK is the
-  // only way to delete Auth users programmatically.
+  // `events`, `activities`, and `hikes`. Firebase Auth accounts are NOT
+  // touched — those have to be removed manually from the Firebase console
+  // because the Admin SDK is the only way to delete Auth users
+  // programmatically.
   Widget _dangerZone(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -106,7 +106,7 @@ class AdminScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Wipe every trail, event, activity, group, hike, and user document from Firestore so you can start clean. Your own admin user account stays. Auth accounts must be deleted from the Firebase Console.',
+            'Wipe every trail, event, activity, hike, and user document from Firestore so you can start clean. Your own admin user account stays. Auth accounts must be deleted from the Firebase Console.',
             style: AppText.bodyMd(scheme.onSurfaceVariant)
                 .copyWith(fontSize: 13, height: 1.45),
           ),
@@ -203,14 +203,6 @@ class AdminScreen extends StatelessWidget {
         final snap = await db.collection(col).get();
         await _batchDelete(db, snap.docs.map((d) => d.reference));
       }
-
-      // Groups need their `posts` subcollection wiped first.
-      final groupsSnap = await db.collection('groups').get();
-      for (final g in groupsSnap.docs) {
-        final posts = await g.reference.collection('posts').get();
-        await _batchDelete(db, posts.docs.map((d) => d.reference));
-      }
-      await _batchDelete(db, groupsSnap.docs.map((d) => d.reference));
 
       // Users: drop everyone except the current admin (so the admin can keep
       // using the app). Also clear each user's notifications subcollection.

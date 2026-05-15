@@ -80,21 +80,66 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  // Strict client-side email format check. Rejects whitespace, missing @,
+  // bad TLDs etc. before we even hit the network. Server-side Firebase Auth
+  // also validates, but failing fast here gives a clearer message.
+  static final _emailRegex = RegExp(
+    r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
+  );
+
   Future<void> _login() async {
     setState(() {
       _error = null;
       _resetMsg = null;
     });
-    if (_email.text.isEmpty || _pass.text.isEmpty) {
+    final email = _email.text.trim();
+    final pass = _pass.text;
+    if (email.isEmpty || pass.isEmpty) {
       setState(() => _error = 'Email and password cannot be empty.');
+      return;
+    }
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _error = 'Please enter a valid email address.');
       return;
     }
     setState(() => _busy = true);
     try {
-      await _auth.signInWithEmailAndPassword(
-          email: _email.text.trim(), password: _pass.text);
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: pass,
+      );
+      // Defensive: never let an "empty success" propagate. Firebase should
+      // always return a user when the call succeeds, but if for any reason
+      // it doesn't we explicitly sign out and surface a clear error.
+      if (cred.user == null || _auth.currentUser == null) {
+        await _auth.signOut();
+        if (mounted) {
+          setState(() => _error = 'Sign-in did not complete. Please retry.');
+        }
+        return;
+      }
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message);
+      // Map Firebase auth codes to actionable messages. Default falls back
+      // to the underlying message so we never silently swallow an error.
+      final msg = switch (e.code) {
+        'invalid-email' => 'That email address is not formatted correctly.',
+        'user-disabled' =>
+          'This account has been disabled. Contact support to restore it.',
+        'user-not-found' || 'invalid-credential' || 'wrong-password' =>
+          'No account matched that email and password.',
+        'too-many-requests' =>
+          'Too many attempts. Please wait a minute and try again.',
+        'network-request-failed' =>
+          'Network error — check your connection and try again.',
+        _ => e.message ?? 'Sign-in failed. Please try again.',
+      };
+      if (mounted) setState(() => _error = msg);
+    } catch (e) {
+      // Catch-all for non-FirebaseAuth errors so a bug never accidentally
+      // looks like a success to the user.
+      if (mounted) {
+        setState(() => _error = 'Unexpected error: $e');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -105,38 +150,56 @@ class _LoginScreenState extends State<LoginScreen>
       _error = null;
       _resetMsg = null;
     });
-    if (_email.text.isEmpty ||
-        _pass.text.isEmpty ||
-        _name.text.isEmpty ||
+    final email = _email.text.trim();
+    final pass = _pass.text;
+    if (email.isEmpty ||
+        pass.isEmpty ||
+        _name.text.trim().isEmpty ||
         _dob.isEmpty ||
-        _location.text.isEmpty ||
-        _phone.text.isEmpty) {
+        _location.text.trim().isEmpty ||
+        _phone.text.trim().isEmpty) {
       setState(() => _error = 'Please fill in all required fields.');
       return;
     }
-    if (_pass.text.length < 6) {
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _error = 'Please enter a valid email address.');
+      return;
+    }
+    if (pass.length < 6) {
       setState(() => _error = 'Password must be at least 6 characters.');
       return;
     }
     setState(() => _busy = true);
     try {
       final res = await _auth.createUserWithEmailAndPassword(
-        email: _email.text.trim(),
-        password: _pass.text,
+        email: email,
+        password: pass,
       );
-      final uid = res.user!.uid;
+      final uid = res.user?.uid;
+      if (uid == null || _auth.currentUser == null) {
+        await _auth.signOut();
+        if (mounted) {
+          setState(() => _error = 'Sign-up did not complete. Please retry.');
+        }
+        return;
+      }
       String profilePicUrl = '';
       if (_profileImage != null) {
-        final ref = _storage.ref().child('profiles/$uid.jpg');
-        await ref.putFile(_profileImage!);
-        profilePicUrl = await ref.getDownloadURL();
+        try {
+          final ref = _storage.ref().child('profiles/$uid.jpg');
+          await ref.putFile(_profileImage!);
+          profilePicUrl = await ref.getDownloadURL();
+        } catch (_) {
+          // Profile picture upload failure is non-fatal — the user can edit
+          // their profile later. We log nothing sensitive.
+        }
       }
       await _db.collection('users').doc(uid).set({
-        'displayName': _name.text,
+        'displayName': _name.text.trim(),
         'dob': _dob,
-        'location': _location.text,
-        'phone': _phone.text,
-        'insta': _insta.text,
+        'location': _location.text.trim(),
+        'phone': _phone.text.trim(),
+        'insta': _insta.text.trim(),
         'showPhone': _showPhone,
         'hikerLevel': 'New Hiker',
         'totalXP': 0,
@@ -148,11 +211,24 @@ class _LoginScreenState extends State<LoginScreen>
         'receivedRequests': <String>[],
         'sentRequests': <String>[],
         'unreadChatIds': <String>[],
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
       });
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message);
+      final msg = switch (e.code) {
+        'email-already-in-use' =>
+          'An account with that email already exists. Try logging in instead.',
+        'invalid-email' => 'That email address is not formatted correctly.',
+        'operation-not-allowed' =>
+          'Email/password sign-up is disabled. Contact support.',
+        'weak-password' =>
+          'Password is too weak. Use at least 6 characters with a mix of letters and numbers.',
+        'network-request-failed' =>
+          'Network error — check your connection and try again.',
+        _ => e.message ?? 'Sign-up failed. Please try again.',
+      };
+      if (mounted) setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = 'Unexpected error: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -163,15 +239,40 @@ class _LoginScreenState extends State<LoginScreen>
       _error = null;
       _resetMsg = null;
     });
-    if (_email.text.isEmpty) {
+    final email = _email.text.trim();
+    if (email.isEmpty) {
       setState(() => _error = 'Please type your email in the box first.');
       return;
     }
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _error = 'Please enter a valid email address.');
+      return;
+    }
     try {
-      await _auth.sendPasswordResetEmail(email: _email.text.trim());
-      setState(() => _resetMsg = 'Password reset email sent!');
+      await _auth.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        setState(() => _resetMsg =
+            'If an account exists for that email, a reset link is on its way.');
+      }
     } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message);
+      // Keep this generic on purpose — we don't want to leak whether an
+      // account exists for a given email (account-enumeration defense).
+      final msg = switch (e.code) {
+        'invalid-email' => 'That email address is not formatted correctly.',
+        'network-request-failed' =>
+          'Network error — check your connection and try again.',
+        _ => 'If an account exists for that email, a reset link is on its way.',
+      };
+      if (mounted) {
+        setState(() {
+          if (e.code == 'invalid-email' ||
+              e.code == 'network-request-failed') {
+            _error = msg;
+          } else {
+            _resetMsg = msg;
+          }
+        });
+      }
     }
   }
 

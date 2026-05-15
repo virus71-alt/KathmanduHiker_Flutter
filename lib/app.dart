@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +12,6 @@ import 'screens/achievements_screen.dart';
 import 'screens/add_trail_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/group_detail_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -81,7 +81,6 @@ class _RootShellState extends State<RootShell> {
   String? _chatFriendId;
   String _chatFriendName = '';
   String? _viewingProfileId;
-  String? _currentGroupId;
 
   // Live data
   List<Trail> _cloudHikes = [];
@@ -111,6 +110,12 @@ class _RootShellState extends State<RootShell> {
 
   late final String _uid;
 
+  // Every Firestore stream subscription is captured here so we can cancel
+  // them all in dispose. Without this, signing out and signing back in (or
+  // any future hot-restart of the shell) would leak listeners on stale
+  // Firestore connections and burn quota.
+  final List<StreamSubscription> _subs = [];
+
   @override
   void initState() {
     super.initState();
@@ -118,8 +123,21 @@ class _RootShellState extends State<RootShell> {
     _wireListeners();
   }
 
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    super.dispose();
+  }
+
   void _wireListeners() {
-    _db.collection('trails').where('isApproved', isEqualTo: true).snapshots().listen((s) {
+    _subs.add(_db
+        .collection('trails')
+        .where('isApproved', isEqualTo: true)
+        .snapshots()
+        .listen((s) {
       if (!mounted) return;
       setState(() {
         _cloudHikes = s.docs
@@ -127,23 +145,31 @@ class _RootShellState extends State<RootShell> {
             .toList();
         _isLoading = false;
       });
-    });
+    }));
 
-    _db.collection('trails').where('authorId', isEqualTo: _uid).snapshots().listen((s) {
+    _subs.add(_db
+        .collection('trails')
+        .where('authorId', isEqualTo: _uid)
+        .snapshots()
+        .listen((s) {
       if (!mounted) return;
       setState(() {
         _mySubmissions = s.docs.map(Trail.fromDoc).toList();
       });
-    });
+    }));
 
-    _db.collection('trails').where('isApproved', isEqualTo: false).snapshots().listen((s) {
+    _subs.add(_db
+        .collection('trails')
+        .where('isApproved', isEqualTo: false)
+        .snapshots()
+        .listen((s) {
       if (!mounted) return;
       setState(() {
         _adminPendingHikes = s.docs.map(Trail.fromDoc).toList();
       });
-    });
+    }));
 
-    _db
+    _subs.add(_db
         .collection('users')
         .doc(_uid)
         .collection('notifications')
@@ -154,9 +180,9 @@ class _RootShellState extends State<RootShell> {
       setState(() {
         _myNotifications = s.docs.map(AppNotification.fromDoc).toList();
       });
-    });
+    }));
 
-    _db.collection('users').doc(_uid).snapshots().listen((doc) {
+    _subs.add(_db.collection('users').doc(_uid).snapshots().listen((doc) {
       if (!mounted || !doc.exists) return;
       final d = doc.data() ?? {};
       setState(() {
@@ -177,7 +203,7 @@ class _RootShellState extends State<RootShell> {
         _myReceivedRequests = ((d['receivedRequests'] as List?) ?? const []).cast<String>();
         _myUnreadChatIds = ((d['unreadChatIds'] as List?) ?? const []).cast<String>();
       });
-    });
+    }));
   }
 
   // ─── Profile + Friends actions ────────────────────────────────────────────
@@ -366,18 +392,6 @@ class _RootShellState extends State<RootShell> {
         () => setState(() => _chatFriendId = null),
       );
     }
-    if (_currentGroupId != null) {
-      return _withBackHandler(
-        GroupDetailScreen(
-          groupId: _currentGroupId!,
-          currentUserId: _uid,
-          currentUserName: _userName,
-          currentUserPic: _userProfilePic,
-          onBack: () => setState(() => _currentGroupId = null),
-        ),
-        () => setState(() => _currentGroupId = null),
-      );
-    }
     if (_currentTrail != null) {
       return _withBackHandler(
         TrailDetailScreen(
@@ -449,8 +463,6 @@ class _RootShellState extends State<RootShell> {
       case 'Social':
         body = SocialScreen(
           currentUserId: _uid,
-          currentUserName: _userName,
-          currentUserPic: _userProfilePic,
           receivedRequests: _myReceivedRequests,
           friends: _myFriends,
           unreadChatIds: _myUnreadChatIds,
@@ -459,8 +471,6 @@ class _RootShellState extends State<RootShell> {
           onReject: _rejectRequest,
           onChatClick: _openChat,
           onProfileClick: _openProfile,
-          onOpenGroup: (groupId) =>
-              setState(() => _currentGroupId = groupId),
           onFeedItemClick: (trailId) async {
             final d = await _db.collection('trails').doc(trailId).get();
             if (d.exists) _openTrail(Trail.fromDoc(d));

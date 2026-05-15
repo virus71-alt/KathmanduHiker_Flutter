@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart' as geo;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -31,9 +32,12 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   final _duration = TextEditingController();
   final _busAccess = TextEditingController();
   final _extraNotes = TextEditingController();
+  final _locationSearchCtl = TextEditingController();
+  GoogleMapController? _mapController;
+  bool _locating = false;
 
   String _difficulty = 'Moderate';
-  String _estimatedCost = 'Under Rs.500';
+  String _estimatedCost = '< Rs.500';
   String _travelMode = 'Bus';
   double _rating = 3.0;
   LatLng _pickedLocation = const LatLng(27.7172, 85.3240);
@@ -53,7 +57,9 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   int _step = 0; // 0..3
 
   final _difficulties = const ['Easy', 'Moderate', 'Hard', 'Challenging'];
-  final _costs = const ['Under Rs.500', 'Rs.500-1500', 'Rs.1500-3000', 'Expensive'];
+  // Compact display labels for the cost dropdown — match what's rendered on
+  // the Trail Detail quick-stats card so nothing truncates ("Under Rs.....").
+  final _costs = const ['< Rs.500', 'Rs.500-1.5k', 'Rs.1.5k-3k', 'Premium'];
   final _modes = const ['Bus', 'Motorcycle', 'Car', 'Cycle'];
   final _facilityOptions = const ['Parking', 'Cafe', 'Hotels', 'Toilets', 'Camping'];
 
@@ -78,8 +84,46 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
     _duration.dispose();
     _busAccess.dispose();
     _extraNotes.dispose();
+    _locationSearchCtl.dispose();
     _pageCtl.dispose();
     super.dispose();
+  }
+
+  // Resolves a free-text query to coordinates via the platform geocoder, then
+  // animates the map + moves the marker. The query is biased to Nepal by
+  // appending ", Nepal" if it isn't already country-qualified.
+  Future<void> _searchLocation(String raw) async {
+    final query = raw.trim();
+    if (query.isEmpty) return;
+    setState(() => _locating = true);
+    try {
+      final biased = query.toLowerCase().contains('nepal')
+          ? query
+          : '$query, Nepal';
+      final results = await geo.locationFromAddress(biased);
+      if (results.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No results for "$query".')),
+          );
+        }
+        return;
+      }
+      final loc = results.first;
+      final target = LatLng(loc.latitude, loc.longitude);
+      setState(() => _pickedLocation = target);
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(target, 14),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Location search failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   Future<void> _pickImages() async {
@@ -200,7 +244,10 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   bool _canAdvance() {
     switch (_step) {
       case 0:
-        return _name.text.trim().isNotEmpty;
+        // Photo is now mandatory — the trail card on the home grid loads
+        // imageUrls[0], so allowing no-photo submissions left the feed
+        // showing a stock fallback. Require at least one upload.
+        return _name.text.trim().isNotEmpty && _selectedImages.isNotEmpty;
       case 1:
         return _difficulty.isNotEmpty;
       case 2:
@@ -469,9 +516,9 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.marginMobile, 8, AppSpacing.marginMobile, 24),
       children: [
-        _sectionTitle('Add Photos'),
+        _sectionTitle('Add Photos *'),
         _sectionSubtitle(
-            'Help others see what this trail looks like. You can add up to 5 photos.'),
+            'At least one photo is required so other hikers can see the trail. You can add up to 5.'),
         const SizedBox(height: 14),
         GridView.builder(
           shrinkWrap: true,
@@ -926,7 +973,38 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
         ),
 
         const SizedBox(height: AppSpacing.stackMd),
-        _sectionTitle('Pick the trailhead on the map'),
+        _sectionTitle('Pick the trailhead'),
+        _sectionSubtitle(
+            'Type a place name or tap directly on the map to drop a pin.'),
+        const SizedBox(height: 10),
+        // Search field — submitting (or tapping the search icon) geocodes
+        // the query and recenters the map. Falls back to a snackbar if the
+        // place isn't found.
+        TextField(
+          controller: _locationSearchCtl,
+          textInputAction: TextInputAction.search,
+          onSubmitted: _searchLocation,
+          decoration: InputDecoration(
+            hintText: 'e.g. Shivapuri, Nagarkot, Champadevi…',
+            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            suffixIcon: _locating
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: colors.primary,
+                      ),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.travel_explore_rounded, size: 20),
+                    onPressed: () => _searchLocation(_locationSearchCtl.text),
+                  ),
+          ),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 220,
@@ -935,6 +1013,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
             child: GoogleMap(
               initialCameraPosition:
                   CameraPosition(target: _pickedLocation, zoom: 12),
+              onMapCreated: (c) => _mapController = c,
               onTap: (pos) => setState(() => _pickedLocation = pos),
               markers: {
                 Marker(

@@ -317,9 +317,52 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         .collection('users')
         .doc(widget.currentUserId)
         .update({'totalXP': FieldValue.increment(RankingManager.xpReview)});
+    await _recalculateTrailRating();
     if (!mounted) return;
     _reviewCtl.clear();
     setState(() => _submittingReview = false);
+  }
+
+  // Recalculates the trail's aggregate rating from the author's seed rating
+  // (set on AddTrail) + every review currently in `trails/{id}/reviews`, and
+  // writes it back to the trail doc so the Home grid and the hero rating
+  // chip stay in sync with what's actually being said.
+  //
+  // Score = average of (seed, review1, review2, ...) where seed is the
+  // ratingScore the trail was created with. This means the very first hike
+  // already shows a number, and subsequent reviews pull it toward the
+  // collective opinion instead of being overwritten by whichever review
+  // happened to be posted last.
+  Future<void> _recalculateTrailRating() async {
+    try {
+      final snap = await _db
+          .collection('trails')
+          .doc(widget.trail.id)
+          .collection('reviews')
+          .get();
+      final reviewRatings = snap.docs
+          .map((d) => ((d.data()['rating'] ?? 0) as num).toDouble())
+          .where((v) => v > 0)
+          .toList();
+      // Seed = the rating the trail author gave on AddTrail. We only fold it
+      // in when no reviews exist yet (so a single user-given rating still
+      // shows), otherwise the community average takes over.
+      final seed = widget.trail.ratingScore > 0
+          ? widget.trail.ratingScore
+          : widget.trail.userRating.toDouble();
+      final all = reviewRatings.isEmpty
+          ? [if (seed > 0) seed]
+          : reviewRatings;
+      if (all.isEmpty) return;
+      final avg = all.reduce((a, b) => a + b) / all.length;
+      final rounded = avg.round().clamp(1, 5);
+      await _db.collection('trails').doc(widget.trail.id).update({
+        'ratingScore': double.parse(avg.toStringAsFixed(2)),
+        'userRating': rounded,
+      });
+    } catch (_) {
+      // Non-fatal — the next post/edit will try again.
+    }
   }
 
   Future<void> _editReview(TrailReview r) async {
@@ -418,6 +461,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         'comment': textCtl.text.trim(),
         'editedAt': DateTime.now().millisecondsSinceEpoch,
       });
+      await _recalculateTrailRating();
     }
     textCtl.dispose();
   }
@@ -449,6 +493,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           .collection('reviews')
           .doc(r.id)
           .delete();
+      await _recalculateTrailRating();
     }
   }
 
@@ -941,9 +986,8 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // hero by -mt-8.
   Widget _quickStatsBar() {
     final scheme = Theme.of(context).colorScheme;
-    final duration =
-        widget.trail.duration.isEmpty ? '—' : widget.trail.duration;
-    final fare = widget.trail.fare.isEmpty ? 'Free' : widget.trail.fare;
+    final duration = _shortDuration(widget.trail.duration);
+    final fare = _shortFare(widget.trail.fare);
     final mode =
         widget.trail.travelMode.isEmpty ? 'Trek' : widget.trail.travelMode;
 
@@ -986,6 +1030,40 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         ),
       ),
     );
+  }
+
+  // "1-2 Hours" → "1-2 hrs", "5 Hour" → "5 hr". Keeps non-standard text intact
+  // so any custom value the user typed in still renders.
+  String _shortDuration(String s) {
+    if (s.trim().isEmpty) return '—';
+    return s
+        .replaceAll(RegExp(r'\bHours\b', caseSensitive: false), 'hrs')
+        .replaceAll(RegExp(r'\bHour\b', caseSensitive: false), 'hr')
+        .replaceAll(RegExp(r'\bMinutes\b', caseSensitive: false), 'min')
+        .replaceAll(RegExp(r'\bMinute\b', caseSensitive: false), 'min')
+        .trim();
+  }
+
+  // Maps the AddTrail cost dropdown values (legacy + new) to compact pill text
+  // so the floating stats card never truncates ("Under Rs....." case).
+  String _shortFare(String s) {
+    if (s.isEmpty) return 'Free';
+    switch (s) {
+      case 'Under Rs.500':
+      case '< Rs.500':
+        return '<Rs500';
+      case 'Rs.500-1500':
+      case 'Rs.500-1.5k':
+        return 'Rs500–1.5k';
+      case 'Rs.1500-3000':
+      case 'Rs.1.5k-3k':
+        return 'Rs1.5–3k';
+      case 'Expensive':
+      case 'Premium':
+        return 'Premium';
+      default:
+        return s;
+    }
   }
 
   Widget _statColumn(IconData icon, String value, String label) {
