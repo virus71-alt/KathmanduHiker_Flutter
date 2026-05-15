@@ -464,11 +464,14 @@ class _RootShellState extends State<RootShell> {
         body = SocialScreen(
           currentUserId: _uid,
           receivedRequests: _myReceivedRequests,
+          sentRequests: _mySentRequests,
           friends: _myFriends,
           unreadChatIds: _myUnreadChatIds,
           validTrailIds: {for (final t in _cloudHikes) t.id},
           onAccept: _acceptRequest,
           onReject: _rejectRequest,
+          onSendFriendRequest: _sendFriendRequest,
+          onCancelFriendRequest: _cancelFriendRequest,
           onChatClick: _openChat,
           onProfileClick: _openProfile,
           onFeedItemClick: (trailId) async {

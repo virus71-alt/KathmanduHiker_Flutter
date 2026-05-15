@@ -11,6 +11,7 @@ import '../utils/feedback.dart';
 class SocialScreen extends StatefulWidget {
   final String currentUserId;
   final List<String> receivedRequests;
+  final List<String> sentRequests;
   final List<String> friends;
   final List<String> unreadChatIds;
   // Trail IDs that currently exist as approved trails. Used to filter out
@@ -18,6 +19,8 @@ class SocialScreen extends StatefulWidget {
   final Set<String> validTrailIds;
   final Future<void> Function(String senderId) onAccept;
   final Future<void> Function(String senderId) onReject;
+  final Future<void> Function(String targetId) onSendFriendRequest;
+  final Future<void> Function(String targetId) onCancelFriendRequest;
   final void Function(String id, String name) onChatClick;
   final void Function(String id) onProfileClick;
   final void Function(String trailId) onFeedItemClick;
@@ -26,10 +29,13 @@ class SocialScreen extends StatefulWidget {
     super.key,
     required this.currentUserId,
     required this.receivedRequests,
+    required this.sentRequests,
     required this.friends,
     required this.unreadChatIds,
     required this.onAccept,
     required this.onReject,
+    required this.onSendFriendRequest,
+    required this.onCancelFriendRequest,
     required this.onChatClick,
     required this.onProfileClick,
     required this.onFeedItemClick,
@@ -126,18 +132,34 @@ class _SocialScreenState extends State<SocialScreen> {
 
   Future<void> _loadProfiles() async {
     setState(() => _loading = true);
-    Future<List<SocialUser>> fetch(List<String> ids) async {
-      if (ids.isEmpty) return const [];
+
+    // Fetches each user doc and reports back two lists: the resolved profiles
+    // and the IDs that no longer correspond to a user doc (deleted accounts).
+    // The caller uses the stale list to prune the current user's arrays in
+    // Firestore so the bottom-nav badge can't keep showing phantom counts.
+    Future<({List<SocialUser> resolved, List<String> stale})> fetch(
+        List<String> ids) async {
+      if (ids.isEmpty) return (resolved: <SocialUser>[], stale: <String>[]);
       final futures = ids.map((id) async {
         try {
           final doc = await _db.collection('users').doc(id).get();
-          return doc.exists ? SocialUser.fromDoc(doc) : null;
+          return doc.exists
+              ? (user: SocialUser.fromDoc(doc), stale: null)
+              : (user: null, stale: id);
         } catch (_) {
-          return null;
+          // Network/permission failure — don't treat as stale.
+          return (user: null, stale: null);
         }
       }).toList();
       final results = await Future.wait(futures);
-      return results.whereType<SocialUser>().toList();
+      return (
+        resolved: results
+            .map((r) => r.user)
+            .whereType<SocialUser>()
+            .toList(),
+        stale:
+            results.map((r) => r.stale).whereType<String>().toList(),
+      );
     }
 
     final pair = await Future.wait([
@@ -146,10 +168,32 @@ class _SocialScreenState extends State<SocialScreen> {
     ]);
     if (!mounted) return;
     setState(() {
-      _friendProfiles = pair[0];
-      _requestProfiles = pair[1];
+      _friendProfiles = pair[0].resolved;
+      _requestProfiles = pair[1].resolved;
       _loading = false;
     });
+
+    // Clean up stale references in the user's own doc so the bottom-nav
+    // badge mirrors what's actually visible in the Requests tab.
+    final staleFriends = pair[0].stale;
+    final staleRequests = pair[1].stale;
+    if (staleFriends.isEmpty && staleRequests.isEmpty) return;
+    try {
+      final updates = <String, dynamic>{};
+      if (staleFriends.isNotEmpty) {
+        updates['friends'] = FieldValue.arrayRemove(staleFriends);
+      }
+      if (staleRequests.isNotEmpty) {
+        updates['receivedRequests'] =
+            FieldValue.arrayRemove(staleRequests);
+      }
+      await _db
+          .collection('users')
+          .doc(widget.currentUserId)
+          .update(updates);
+    } catch (_) {
+      // Non-fatal — the next load will retry.
+    }
   }
 
   @override
@@ -211,21 +255,34 @@ class _SocialScreenState extends State<SocialScreen> {
     }
   }
 
+  // Delegates to the parent (RootShell) so the user-doc snapshot listener
+  // picks up the new `sentRequests` entry and rebuilds this screen with the
+  // updated state — the search tile then flips to "Sent" automatically.
+  // The parent already toasts on success/failure, so we don't double-toast.
   Future<void> _sendFriendRequest(SocialUser u) async {
     AppFeedback.success();
     try {
-      await _db.collection('users').doc(u.id).update({
-        'receivedRequests': FieldValue.arrayUnion([widget.currentUserId])
-      });
-      await _db.collection('users').doc(widget.currentUserId).update({
-        'sentRequests': FieldValue.arrayUnion([u.id])
-      });
+      await widget.onSendFriendRequest(u.id);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Friend request sent to ${u.name}')),
+          SnackBar(content: Text('Could not send request: $e')),
         );
       }
-    } catch (_) {}
+    }
+  }
+
+  Future<void> _cancelFriendRequest(SocialUser u) async {
+    AppFeedback.warning();
+    try {
+      await widget.onCancelFriendRequest(u.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not cancel request: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -949,6 +1006,9 @@ class _SocialScreenState extends State<SocialScreen> {
   Widget _searchResultTile(SocialUser u) {
     final scheme = Theme.of(context).colorScheme;
     final isAlreadyFriend = widget.friends.contains(u.id);
+    final hasSent = widget.sentRequests.contains(u.id);
+    // The other side may have sent us a request first — if so, show Accept.
+    final theySentToMe = widget.receivedRequests.contains(u.id);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -982,30 +1042,74 @@ class _SocialScreenState extends State<SocialScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            if (isAlreadyFriend)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(AppRadius.lg * 2),
-                ),
-                child: Text('Friends',
-                    style: AppText.labelSm(scheme.onPrimaryContainer)
-                        .copyWith(fontWeight: FontWeight.w800)),
-              )
-            else
-              FilledButton.icon(
-                onPressed: () => _sendFriendRequest(u),
-                icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                label: const Text('Add'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  minimumSize: const Size(0, 38),
-                ),
-              ),
+            _searchTileAction(
+              scheme: scheme,
+              user: u,
+              isFriend: isAlreadyFriend,
+              hasSent: hasSent,
+              theySentToMe: theySentToMe,
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _searchTileAction({
+    required ColorScheme scheme,
+    required SocialUser user,
+    required bool isFriend,
+    required bool hasSent,
+    required bool theySentToMe,
+  }) {
+    if (isFriend) {
+      // Already connected — show static pill, no action.
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(AppRadius.lg * 2),
+        ),
+        child: Text('Friends',
+            style: AppText.labelSm(scheme.onPrimaryContainer)
+                .copyWith(fontWeight: FontWeight.w800)),
+      );
+    }
+    if (theySentToMe) {
+      // Inverse path — they already requested us. Surface Accept directly
+      // from the search result so the user doesn't have to scroll.
+      return FilledButton.icon(
+        onPressed: () => widget.onAccept(user.id),
+        icon: const Icon(Icons.check_rounded, size: 16),
+        label: const Text('Accept'),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          minimumSize: const Size(0, 38),
+        ),
+      );
+    }
+    if (hasSent) {
+      // Request already sent — outlined "Cancel" lets the user undo.
+      return OutlinedButton.icon(
+        onPressed: () => _cancelFriendRequest(user),
+        icon: const Icon(Icons.schedule_send_rounded, size: 16),
+        label: const Text('Sent'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: scheme.primary,
+          side: BorderSide(color: scheme.primary),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          minimumSize: const Size(0, 38),
+        ),
+      );
+    }
+    // Default — Add (sends a new request).
+    return FilledButton.icon(
+      onPressed: () => _sendFriendRequest(user),
+      icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+      label: const Text('Add'),
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        minimumSize: const Size(0, 38),
       ),
     );
   }

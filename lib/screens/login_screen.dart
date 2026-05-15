@@ -341,73 +341,90 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
           SafeArea(
-            child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: FadeTransition(
-                opacity: _fade,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _topBar(scheme, isDark),
-                    const SizedBox(height: 32),
-                    _brandHeader(scheme),
-                    const SizedBox(height: 28),
-                    _modeSegmented(scheme),
-                    const SizedBox(height: 22),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SizeTransition(
-                          sizeFactor: anim,
-                          axisAlignment: -1,
-                          child: child,
-                        ),
-                      ),
-                      child: _isSignUp
-                          ? _signUpFields(scheme)
-                          : const SizedBox.shrink(),
-                    ),
-                    _field(_email, 'Email',
-                        icon: Icons.alternate_email_rounded,
-                        keyboard: TextInputType.emailAddress),
-                    const SizedBox(height: 12),
-                    _passwordField(scheme),
-                    if (_error != null) ...[
-                      const SizedBox(height: 14),
-                      _statusBanner(_error!, scheme.error, Icons.error_outline),
-                    ],
-                    if (_resetMsg != null) ...[
-                      const SizedBox(height: 14),
-                      _statusBanner(_resetMsg!, scheme.tertiary,
-                          Icons.mark_email_read_outlined),
-                    ],
-                    const SizedBox(height: 22),
-                    _primaryCta(scheme),
-                    const SizedBox(height: 8),
-                    if (!_isSignUp)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () {
-                            AppFeedback.tap();
-                            _reset();
-                          },
-                          child: Text(
-                            'Forgot password?',
-                            style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w600),
+            // LayoutBuilder + ConstrainedBox(minHeight) + IntrinsicHeight
+            // makes the inner Column stretch to the full viewport height
+            // even when its natural content is shorter — that removes the
+            // blank dead-zone under the "Sign up" footer on tall phones.
+            // The Spacer between the form and the footer flexes to absorb
+            // the extra space.
+            child: LayoutBuilder(
+              builder: (ctx, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 16),
+                child: ConstrainedBox(
+                  constraints:
+                      BoxConstraints(minHeight: constraints.maxHeight - 32),
+                  child: IntrinsicHeight(
+                    child: FadeTransition(
+                      opacity: _fade,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _topBar(scheme, isDark),
+                          const SizedBox(height: 32),
+                          _brandHeader(scheme),
+                          const SizedBox(height: 28),
+                          _modeSegmented(scheme),
+                          const SizedBox(height: 22),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SizeTransition(
+                                sizeFactor: anim,
+                                axisAlignment: -1,
+                                child: child,
+                              ),
+                            ),
+                            child: _isSignUp
+                                ? _signUpFields(scheme)
+                                : const SizedBox.shrink(),
                           ),
-                        ),
+                          _field(_email, 'Email',
+                              icon: Icons.alternate_email_rounded,
+                              keyboard: TextInputType.emailAddress),
+                          const SizedBox(height: 12),
+                          _passwordField(scheme),
+                          if (_error != null) ...[
+                            const SizedBox(height: 14),
+                            _statusBanner(
+                                _error!, scheme.error, Icons.error_outline),
+                          ],
+                          if (_resetMsg != null) ...[
+                            const SizedBox(height: 14),
+                            _statusBanner(_resetMsg!, scheme.tertiary,
+                                Icons.mark_email_read_outlined),
+                          ],
+                          const SizedBox(height: 22),
+                          _primaryCta(scheme),
+                          const SizedBox(height: 8),
+                          if (!_isSignUp)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {
+                                  AppFeedback.tap();
+                                  _reset();
+                                },
+                                child: Text(
+                                  'Forgot password?',
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          // Flex spacer pushes the footer to the bottom of
+                          // the viewport so there's no dead zone beneath it.
+                          const Spacer(),
+                          _switchModeFooter(scheme),
+                          const SizedBox(height: 8),
+                        ],
                       ),
-                    const SizedBox(height: 6),
-                    _switchModeFooter(scheme),
-                    const SizedBox(height: 24),
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
