@@ -205,22 +205,3 @@ ALL of these are true for a sample:
 🚌 This is what stops the bus you took to the trailhead from
 counting as part of your hike.
 
-
-💎 WHY IT FEELS DIFFERENT
-─────────────────────────
-
-  •  🇳🇵  Built specifically for Nepal — fare brackets in NPR,
-        bus pickup info, monsoon season awareness, SOS calls
-        Nepal's 100 / 102 / 1144.
-  •  🏃  Not a Strava clone — no leaderboard, no competitive
-        layer. It's a community first, a tracker second.
-  •  📵  Not a Facebook clone — no public timeline, no public
-        posts, no algorithmic feed. Just trails, reviews, and
-        friends.
-  •  🌍  Not an AllTrails clone — every trail is community-
-        submitted and admin-vetted, not scraped from open data.
-
-
-────────────────────────────────────────────────────────────────────
-   🏔️  Made for the mountains, by the people who walk them.  🥾
-────────────────────────────────────────────────────────────────────
