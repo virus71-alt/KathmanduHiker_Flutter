@@ -1,176 +1,143 @@
-# Kathmandu Hiker — Flutter port
+<div align="center">
 
-A cross-platform (iOS + Android) port of the Android app located in `../app/`. It reuses the **same Firebase project / Firestore schema** so both apps work against one backend.
+# 🏔️ Kathmandu Hiker 🏔️
 
-## Folder layout
+### *The community trail companion for the Himalayas*
 
-```
-flutter_app/
-├── lib/
-│   ├── main.dart            # Firebase init + run app
-│   ├── app.dart             # AuthGate + RootShell (bottom nav + routing)
-│   ├── theme/app_theme.dart # Light-only Material 3 theme (no dark mode)
-│   ├── utils/
-│   │   ├── feedback.dart        # Haptics + system click sound
-│   │   ├── ranking_manager.dart # XP rules (matches Kotlin RankingManager)
-│   │   └── image_utils.dart     # JPEG compression for uploads
-│   ├── models/              # Trail, HikeEvent, Comment, TrailPhoto, ...
-│   ├── services/
-│   │   ├── weather_service.dart       # OpenWeather API
-│   │   └── hike_tracking_service.dart  # GPS distance tracker
-│   └── screens/             # All 14 screens
-└── pubspec.yaml
-```
+[![Flutter](https://img.shields.io/badge/Flutter-3.22+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth%20%7C%20Firestore%20%7C%20Storage-FFA000?logo=firebase&logoColor=white)](https://firebase.google.com)
+[![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Android-success)](https://flutter.dev)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#)
 
-## One-time setup
+</div>
 
-You need Flutter ≥ 3.22 installed. Run from the `flutter_app/` directory.
+---
 
-### 1. Bootstrap native platform folders
+## 🌿 What it is
 
-This Flutter project ships only the `lib/` source. The `android/` and `ios/` platform folders should be generated locally so Flutter's tool versions match your machine:
+**Kathmandu Hiker** is a community-driven hiking app for the Kathmandu Valley and the surrounding Himalayan foothills. It blends **three things** into one product:
 
-```bash
-flutter create --platforms=android,ios --org com.example .
-flutter pub get
-```
+- 📍 **A crowdsourced trail guide** — anyone can submit a trail, admin approves
+- 🛰️ **A live GPS hike tracker** — bus & car travel automatically filtered out
+- 👥 **A small hiking social network** — friends, chats, group hikes
 
-### 2. Wire Firebase
+---
 
-Install the FlutterFire CLI and connect to your existing Firebase project (the same one used by the Android app):
+## 🎯 The problem it solves
 
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure
-```
+Kathmandu has dozens of casual day-hikes — Shivapuri, Champadevi, Nagarjun, Phulchowki, Chandragiri — but the information is scattered across blogs, WhatsApp groups, and tribal knowledge. Hikers can't easily answer:
 
-This generates `lib/firebase_options.dart` and drops the platform configs (`android/app/google-services.json` and `ios/Runner/GoogleService-Info.plist`).
+| Question | Why it matters |
+|---|---|
+| 🚌 How do I get there by local bus, and the fare? | Saves money + planning time |
+| ⛰️ How hard is the climb, and is it crowded? | Avoid disappointment |
+| 🌄 Where's that hidden viewpoint everyone mentions? | The good stuff |
+| 🌦️ What's the weather like up there right now? | Stay safe |
 
-Then update `lib/main.dart` to use the generated options:
+This app collects all of that from the hikers who've actually walked the trail, and surfaces it cleanly to whoever heads there next. ✨
 
-```dart
-import 'firebase_options.dart';
-// ...
-await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-```
+---
 
-### 3. Google Maps API key
+## 🙋 Who it's for
 
-**Android** — open `android/app/src/main/AndroidManifest.xml` and add inside `<application>`:
+- 🏡 **Locals** planning a weekend escape
+- 🎒 **Tourists** doing day hikes without a paid guide
+- 📝 **Power hikers** who want to share routes and level up
+- 👯 **Hiking groups** organising a weekend meetup
 
-```xml
-<meta-data
-    android:name="com.google.android.geo.API_KEY"
-    android:value="YOUR_MAPS_API_KEY" />
-```
+---
 
-**iOS** — open `ios/Runner/AppDelegate.swift` and add:
+## 🚀 Key features
 
-```swift
-import GoogleMaps
-// inside application(_:didFinishLaunchingWithOptions:)
-GMSServices.provideAPIKey("YOUR_MAPS_API_KEY")
-```
+### 🏠 Home
+Bento grid of trails, live weather ribbon, search, difficulty filter, bookmark, map view, and a **🚨 emergency SOS sheet** (Police `100`, Ambulance `102`, Tourist Police `1144`, GPS-SMS, built-in siren).
 
-### 4. Permissions
+### 🥾 Trail Detail
+Photo carousel with pinch-zoom, quick stats card, **🧭 Start Navigation** (Google Maps deep-link with 3-tier fallback), **📡 live GPS tracker**, *How to Get There* with real fares, **☁️ weather pill**, **📅 Plan Hike**, **🖼️ community gallery**, and **⭐ reviews with averaged ratings**.
 
-**Android** — add to `android/app/src/main/AndroidManifest.xml`:
+### ➕ Add Trail (4-step flow)
+1. **📷 Photos** — mandatory, multi-pick
+2. **🥾 Difficulty** — Easy / Moderate / Hard / Challenging
+3. **🚐 Transport** — start point, bus pickup, fare bracket, duration, searchable map
+4. **✨ Experience** — rating, seasons, crowd, features, hazards, tips
 
-```xml
-<uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-<uses-permission android:name="android.permission.CALL_PHONE"/>
-<uses-permission android:name="android.permission.SEND_SMS"/>
-```
+### 👥 Social
+- 🌍 **Community** — featured upcoming hikes + activity feed
+- 💬 **Chats** — 1:1 messaging with unread badges
+- 🤝 **Requests** — find hikers, send / cancel / accept friend requests
 
-**iOS** — add to `ios/Runner/Info.plist`:
+### 👤 Profile
+Avatar, XP bar, hiker level, submissions, edit sheet, **🏆 achievements**, and **🛡️ admin dashboard** (admin role only).
 
-```xml
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Track your hikes with GPS</string>
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-<string>Track your hikes even when the app is in the background</string>
-<key>NSPhotoLibraryUsageDescription</key>
-<string>Upload trail photos</string>
-<key>NSCameraUsageDescription</key>
-<string>Take trail photos</string>
-```
+---
 
-### 5. Optional siren asset
+## 🏅 Levels & XP
 
-To enable the loud-siren button on the SOS sheet, drop an `assets/siren.mp3` file and register it in `pubspec.yaml`:
+| XP | Action |
+|---:|:---|
+| 📝 **15** | Submit a trail |
+| ✅ **80** | Trail approved by admin |
+| ⭐ **10** | Post a review |
+| 📸 **20** | Upload a community photo |
+| 📅 **30** | Host a group hike |
+| 🚶 **50** | Complete an Easy tracked hike |
+| ⛰️ **100** | Complete a Moderate / Hard / Challenging hike |
 
-```yaml
-flutter:
-  assets:
-    - assets/siren.mp3
-```
+**Title progression:**
+🆕 New Hiker → 🌱 Beginner → 🚶 Trail Walker → 🧭 Pathfinder → 🏞️ Explorer → ⛰️ Mountain Guide → 👑 Trail Master
 
-If the asset is missing, the SOS sheet still works — the siren button just shows a friendly snackbar.
+---
 
-## Run
+## 🎨 Design
 
-```bash
-flutter run                # use the connected device or simulator
-flutter run -d ios
-flutter run -d android
-```
+- 🌲 **Forest-green primary**, moss-green dark accent
+- 🅰️ **Lexend** typography across six tiers
+- 🌙 **Dark mode by default**, full light/dark theming via Material 3
+- ✨ Skeuomorphic shadows on primary buttons, sunken cards, hairline borders
+- 🧗 Rugged but refined outdoor-gear feel
 
-## What's covered
+---
 
-✅ Auth (login / signup with profile pic + DOB / password reset)
-✅ Home — trail feed, search, difficulty filter, map view, SOS sheet
-✅ Trail Detail — image carousel, GPS hike tracking, reviews, comments, group events, photo gallery, weather, friend invite, share
-✅ Add Trail — guided multi-choice "Best season / Crowd / Hidden spot / Difficult part" questions
-✅ Social — swipeable PageView between Community / Chats / Requests
-✅ Chat — real-time messages
-✅ Profile — edit profile, picture, clickable Achievements card
-✅ Achievements — 13-level roadmap with locked/unlocked states
-✅ Notifications — list with read/unread + clear all
-✅ Admin — approve / reject pending trails
-✅ Public Profile — view another user's profile
-✅ Leaderboard — top 50 by XP
+## 🛠️ Tech stack
 
-## Backend compatibility
+| | |
+|---|---|
+| **Framework** | 💙 Flutter |
+| **Backend** | 🔥 Cloud Firestore · 🔐 Firebase Auth · 📦 Firebase Storage |
+| **Maps** | 🗺️ google_maps_flutter · 📍 geocoding |
+| **Location** | 🛰️ geolocator (high-accuracy GPS) |
+| **Integrations** | 🔗 url_launcher · ☁️ OpenWeather API |
+| **Background** | 🔔 flutter_background_service · flutter_local_notifications |
+| **UI** | 🖼️ cached_network_image · photo_view · google_fonts |
 
-Firestore collections + field names match the Android app exactly:
+---
 
-```
-trails/{id}      ← name, difficulty, transportRoute, fare, food, description,
-                   imageUrls, userRating, ratingScore, travelMode, busAccess,
-                   duration, facilities, latitude, longitude, isApproved,
-                   authorId, authorName
-   .../reviews/{id}
-   .../comments/{id}
-   .../gallery/{id}
+## 🧪 Smart hike tracking
 
-users/{uid}      ← displayName, dob, location, phone, insta, showPhone,
-                   bio, profilePic, role, totalXP, hikerLevel,
-                   favoriteTrails, friends, sentRequests, receivedRequests,
-                   unreadChatIds
-   .../notifications/{id}
+Distance is only added to your hike when **all** of these are true for a GPS sample:
 
-events/{id}      ← trailId, trailName, creatorId, creatorName, dateText,
-                   maxHikers, attendees, attendeeDetails, timestamp
+| Check | Rule | Why |
+|---|---|---|
+| 🎯 Accuracy | `≤ 30 m` | Drop weak GPS fixes |
+| 📏 Move | `≥ 2 m` | Filter standing-still jitter |
+| 🚫 Move | `≤ 80 m` | Reject phantom GPS jumps |
+| 🐢 Speed | `≤ 8 km/h` | Ignore vehicle travel |
 
-chats/{chatId}/messages/{id}
-hikes/{id}       ← userId, trailId, distanceKm, timestamp
-activities/{id}  ← userId, userName, userPic, actionType, targetName,
-                   targetId, timestamp
-```
+> 🚌 *That's why the bus you took to the trailhead doesn't pad your distance.*
 
-`chatId` is `${smallerUid}_${largerUid}`.
+---
 
-## Background GPS on Android
+## 💎 Why it's different
 
-The included `HikeTrackingService` runs `Geolocator.getPositionStream` while the app is in the foreground. For locked-screen tracking, wrap the stream in `flutter_background_service` (already in `pubspec.yaml`) — see [the package docs](https://pub.dev/packages/flutter_background_service) for a 30-line foreground-service config.
+- 🇳🇵 **Built for Nepal** — NPR fare brackets, bus pickup info, Nepal SOS numbers (100/102/1144)
+- 🏃 **Not a Strava clone** — community first, tracker second. No competitive leaderboard pressure.
+- 📵 **Not a Facebook clone** — no algorithmic feed, no public timeline, no public posts
+- 🌍 **Not an AllTrails clone** — every trail is hiker-submitted and admin-vetted, not scraped from open data
 
-## Differences vs the Android app
+---
 
-* Light theme only — dark mode was removed in both apps.
-* The Android in-app foreground service notification is replaced by `flutter_local_notifications` (you'll see a hike-in-progress notification once you configure the channel — see `flutter_local_notifications`'s README for the iOS DARWIN setup).
-* Emojis replaced inline material icons in the redesigned UI; behaviour and data flow are otherwise identical.
+<div align="center">
+
+### 🏔️ Made for the mountains, by the people who walk them. 🥾
+
+</div>
