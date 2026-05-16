@@ -18,6 +18,9 @@ dependencies:
   cloud_firestore: ^5.4.4
   firebase_storage: ^12.3.4
 
+  # Google Sign-In — federated auth provider for one-tap login.
+  google_sign_in: ^6.2.1
+
   # Maps + Location
   google_maps_flutter: ^2.10.0
   geolocator: ^13.0.1

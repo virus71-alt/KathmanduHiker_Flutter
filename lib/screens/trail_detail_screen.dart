@@ -323,16 +323,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     setState(() => _submittingReview = false);
   }
 
-  // Recalculates the trail's aggregate rating from the author's seed rating
-  // (set on AddTrail) + every review currently in `trails/{id}/reviews`, and
-  // writes it back to the trail doc so the Home grid and the hero rating
-  // chip stay in sync with what's actually being said.
-  //
-  // Score = average of (seed, review1, review2, ...) where seed is the
-  // ratingScore the trail was created with. This means the very first hike
-  // already shows a number, and subsequent reviews pull it toward the
-  // collective opinion instead of being overwritten by whichever review
-  // happened to be posted last.
+
   Future<void> _recalculateTrailRating() async {
     try {
       final snap = await _db
@@ -655,11 +646,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         widget.trail.name.isEmpty ? 'Kathmandu' : widget.trail.name);
     final webDestination = coordPair ?? '$queryLabel,Kathmandu';
 
-    // Try, in order, the most specific Google Maps app intent → the generic
-    // Android geo intent → the universal https URL. Each falls through if the
-    // previous one cannot be launched. `mode: externalApplication` is critical
-    // on Android — without it the system picks a webview and the chooser
-    // never appears.
+
     final attempts = <Uri>[
       if (Platform.isAndroid && coordPair != null)
         Uri.parse('google.navigation:q=$coordPair&mode=w'),

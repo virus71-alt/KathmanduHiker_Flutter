@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -276,6 +277,106 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  // ── Google Sign-In ──────────────────────────────────────────────────────
+  // Federated auth flow:
+  //   1. Open Google's account chooser via `google_sign_in`.
+  //   2. Exchange the Google id/access tokens for a Firebase credential.
+  //   3. Sign into Firebase Auth.
+  //   4. If the Firestore `users/{uid}` doc doesn't exist yet, create it
+  //      seeded from the Google profile (display name + photo). This is
+  //      what makes Google a single button for both "Log in" AND "Sign up".
+  final _googleSignIn = GoogleSignIn();
+
+  Future<void> _continueWithGoogle() async {
+    setState(() {
+      _error = null;
+      _resetMsg = null;
+      _busy = true;
+    });
+    try {
+      // Force-fresh chooser so users on a shared device can pick the right
+      // account. signOut just clears the local Google session, not Firebase.
+      await _googleSignIn.signOut();
+      final account = await _googleSignIn.signIn();
+      if (account == null) {
+        // User cancelled the chooser — silently bail, no error toast.
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      final googleAuth = await account.authentication;
+      if (googleAuth.idToken == null) {
+        if (mounted) {
+          setState(() => _error = 'Could not read Google credentials. Please retry.');
+        }
+        return;
+      }
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+        accessToken: googleAuth.accessToken,
+      );
+      final userCred = await _auth.signInWithCredential(credential);
+      final user = userCred.user;
+      if (user == null || _auth.currentUser == null) {
+        await _auth.signOut();
+        if (mounted) {
+          setState(() => _error = 'Sign-in did not complete. Please retry.');
+        }
+        return;
+      }
+
+      // First-time Google sign-in → create the Firestore profile doc seeded
+      // from the Google account. Returning Google users skip this step so
+      // we don't overwrite their existing profile.
+      final userRef = _db.collection('users').doc(user.uid);
+      final existing = await userRef.get();
+      if (!existing.exists) {
+        await userRef.set({
+          'displayName':
+              user.displayName?.trim().isNotEmpty == true
+                  ? user.displayName!.trim()
+                  : (account.displayName ?? account.email.split('@').first),
+          'dob': '',
+          'location': '',
+          'phone': '',
+          'insta': '',
+          'showPhone': false,
+          'hikerLevel': 'New Hiker',
+          'totalXP': 0,
+          'bio': 'Ready to explore!',
+          'favoriteTrails': <String>[],
+          'role': 'user',
+          'profilePic': user.photoURL ?? '',
+          'friends': <String>[],
+          'receivedRequests': <String>[],
+          'sentRequests': <String>[],
+          'unreadChatIds': <String>[],
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+          'authProvider': 'google',
+        });
+      }
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'account-exists-with-different-credential' =>
+          'An account with that email already uses a different sign-in method. Try email + password instead.',
+        'invalid-credential' =>
+          'Google credentials were rejected. Please try again.',
+        'user-disabled' => 'This account has been disabled.',
+        'operation-not-allowed' =>
+          'Google sign-in is disabled. Contact support.',
+        'network-request-failed' =>
+          'Network error — check your connection and try again.',
+        _ => e.message ?? 'Google sign-in failed. Please try again.',
+      };
+      if (mounted) setState(() => _error = msg);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Google sign-in failed: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _toggleMode() {
     AppFeedback.tap();
     final current = ThemeController.instance.mode.value;
@@ -416,6 +517,10 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
                             ),
+                          const SizedBox(height: 12),
+                          _orDivider(scheme),
+                          const SizedBox(height: 12),
+                          _googleButton(scheme),
                           // Flex spacer pushes the footer to the bottom of
                           // the viewport so there's no dead zone beneath it.
                           const Spacer(),
@@ -901,6 +1006,73 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  // Slim "or" rule used to break up the email auth block from the federated
+  // Google option below it. Two hairline outline-variant strokes with a
+  // single onSurfaceVariant label centered on top.
+  Widget _orDivider(ColorScheme scheme) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: scheme.outlineVariant, thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'OR',
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: scheme.outlineVariant, thickness: 1)),
+      ],
+    );
+  }
+
+  // "Continue with Google" — outlined button so it doesn't compete with the
+  // primary forest-green CTA above. Multi-colored G logo painted with a
+  // small CustomPainter so we don't have to bundle an asset.
+  Widget _googleButton(ColorScheme scheme) {
+    return OutlinedButton(
+      onPressed: _busy
+          ? null
+          : () {
+              AppFeedback.tap();
+              _continueWithGoogle();
+            },
+      style: OutlinedButton.styleFrom(
+        foregroundColor: scheme.onSurface,
+        side: BorderSide(color: scheme.outlineVariant, width: 1.4),
+        backgroundColor: scheme.surfaceContainerLowest,
+        minimumSize: const Size.fromHeight(54),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CustomPaint(painter: _GoogleGPainter()),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _isSignUp ? 'Sign up with Google' : 'Continue with Google',
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _switchModeFooter(ColorScheme scheme) {
     return Center(
       child: Row(
@@ -934,4 +1106,47 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
+}
+
+/// Four-color "G" logo painted from scratch so the Google button doesn't need
+/// a bundled asset. Approximates Google's brand mark with arc strokes around
+/// a horizontal cross-bar — close enough for an outlined sign-in button.
+class _GoogleGPainter extends CustomPainter {
+  // Official Google brand colors.
+  static const _blue = Color(0xFF4285F4);
+  static const _red = Color(0xFFEA4335);
+  static const _yellow = Color(0xFFFBBC05);
+  static const _green = Color(0xFF34A853);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.shortestSide / 2 - 1.5;
+    final stroke = size.shortestSide * 0.18;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+
+    // Four colored quarter-arcs around the circle.
+    final rect = Rect.fromCircle(center: c, radius: r);
+    canvas.drawArc(rect, -1.57, 1.57, false, paint..color = _blue); // top-right
+    canvas.drawArc(rect, 0, 1.57, false, paint..color = _green); // bottom-right
+    canvas.drawArc(rect, 1.57, 1.57, false, paint..color = _yellow); // bottom-left
+    canvas.drawArc(rect, 3.14, 1.57, false, paint..color = _red); // top-left
+
+    // Cross-bar of the "G" — short blue stub from the centre out to the right.
+    final barPaint = Paint()
+      ..color = _blue
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    canvas.drawLine(
+      Offset(c.dx, c.dy),
+      Offset(c.dx + r - stroke / 2, c.dy),
+      barPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
