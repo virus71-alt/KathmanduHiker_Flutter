@@ -1,0 +1,53 @@
+# Flutter CI — minimum pipeline required by ULTIMATE.md §12.4.
+#
+# Stages: format-check → static-analysis → unit-tests.
+# Release build is intentionally not run here yet because it needs
+# `google-services.json` / `GoogleService-Info.plist` injected from secrets.
+# Add that as a separate workflow once the Firebase config is wired into
+# repo secrets and the signing config (build.gradle.kts §35) is fixed.
+
+name: flutter-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.22.0
+          cache: true
+
+      - run: flutter --version
+
+      - run: flutter pub get
+
+      # ── ULTIMATE.md §12.4 ──────────────────────────────────────────
+      - name: Format check
+        run: dart format --set-exit-if-changed lib test
+
+      - name: Static analysis
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: Unit tests
+        # OPENWEATHER_KEY is set to a dummy value so the WeatherService tests
+        # can reach the MockClient code paths. Real key is only needed in
+        # release builds, not in CI tests.
+        run: flutter test --coverage --reporter expanded --dart-define=OPENWEATHER_KEY=test_key
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          if-no-files-found: ignore

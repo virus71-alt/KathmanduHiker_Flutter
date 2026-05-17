@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Kathmanduhiker</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>kathmanduhiker</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- Location for hike tracking -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Track your hikes with GPS and see weather for trail locations.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Keep tracking your hike even when the app is in the background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Keep tracking your hike even when the app is in the background.</string>
+
+	<!-- Camera + photo library for profile + trail photos -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick a profile picture or share trail photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save trail photos to your library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos of trails to share with the community.</string>
+
+	<!-- LSApplicationQueriesSchemes so url_launcher can open tel:/sms:/maps: -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>sms</string>
+		<string>mailto</string>
+		<string>comgooglemaps</string>
+	</array>
+
+	<!-- Allows audioplayers to keep playing siren when app is backgrounded briefly -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+	</array>
+
+	<!-- Google Sign-In: the REVERSED_CLIENT_ID from GoogleService-Info.plist is
+	     registered as a URL scheme so iOS can hand control back to the app
+	     after the Google account chooser completes. Must stay in sync with
+	     ios/Runner/GoogleService-Info.plist whenever the iOS app is re-registered
+	     in Firebase. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.212391700453-73vov96gb543vjiejnac5u79dhma06v1</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- App Transport Security — strict, per ULTIMATE.md §2.2 / §2.6.
+	     Defaults are already strict on iOS 9+, but making it explicit
+	     prevents a future engineer from quietly flipping NSAllowsArbitraryLoads
+	     to true to "fix" a dev-only http endpoint. If you need to hit a local
+	     dev server, add an NSExceptionDomains entry for that single host,
+	     never NSAllowsArbitraryLoads. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<false/>
+	</dict>
+</dict>
+</plist>

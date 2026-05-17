@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
+import 'core/logger.dart';
 import 'models/app_notification.dart';
 import 'models/trail.dart';
 import 'screens/achievements_screen.dart';
@@ -114,12 +115,28 @@ class _RootShellState extends State<RootShell> {
   // them all in dispose. Without this, signing out and signing back in (or
   // any future hot-restart of the shell) would leak listeners on stale
   // Firestore connections and burn quota.
-  final List<StreamSubscription> _subs = [];
+  final List<StreamSubscription<dynamic>> _subs = [];
 
   @override
   void initState() {
     super.initState();
-    _uid = _auth.currentUser!.uid;
+    // Defensive: RootShell is only mounted by AuthGate when a User is
+    // present, but we never trust a `!` against an external source. If
+    // somehow currentUser is null we sign out and let AuthGate re-route
+    // back to LoginScreen instead of crashing on the bang.
+    final user = _auth.currentUser;
+    if (user == null) {
+      AppLog.e('shell.boot.noUser');
+      // Trigger an immediate signOut so AuthGate's StreamBuilder rebuilds
+      // and lands on LoginScreen on the next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _auth.signOut();
+      });
+      _uid = '';
+      return;
+    }
+    _uid = user.uid;
+    AppLog.setUser(_uid);
     _wireListeners();
   }
 

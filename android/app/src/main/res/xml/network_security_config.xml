@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config — per ULTIMATE.md §2.2 / §19.2.
+
+  Cleartext (http://) traffic is denied for every domain. If you need to
+  test against a local dev server, add a debug-overrides block here rather
+  than flipping cleartextTrafficPermitted globally.
+
+  Certificate pinning (§2.2.2) is intentionally NOT added here yet because
+  pinning the wrong SPKI hash will brick the app on cert rotation. Wire it
+  up once we settle on the production API host and have two backup pins.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

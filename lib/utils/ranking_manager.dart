@@ -1,4 +1,4 @@
-/// Mirrors com.example.kathmanduhiker.util.RankingManager exactly so XP rules
+/// Mirrors com.rahul.kathmanduhiker.util.RankingManager exactly so XP rules
 /// match between the Android and Flutter clients.
 class RankingManager {
   static const int xpPerLevel = 100;
