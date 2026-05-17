@@ -31,7 +31,7 @@ class LeaderboardScreen extends StatelessWidget {
             .snapshots(),
         builder: (_, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final docs = snap.data!.docs;
+          final docs = snap.requireData.docs;
           if (docs.isEmpty) return const Center(child: Text('No hikers yet 🌲'));
           return ListView.separated(
             itemCount: docs.length,

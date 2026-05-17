@@ -58,7 +58,12 @@ class _CreateEventBottomSheetState extends State<CreateEventBottomSheet> {
             },
             child: InputDecorator(
               decoration: const InputDecoration(labelText: '🗓️ Date'),
-              child: Text(_date == null ? 'Pick a date' : DateFormat('EEE, MMM d, y').format(_date!)),
+              child: Builder(builder: (_) {
+                final d = _date;
+                return Text(d == null
+                    ? 'Pick a date'
+                    : DateFormat('EEE, MMM d, y').format(d));
+              }),
             ),
           ),
           const SizedBox(height: 12),
@@ -70,10 +75,12 @@ class _CreateEventBottomSheetState extends State<CreateEventBottomSheet> {
           const SizedBox(height: 16),
           FilledButton(
             onPressed: () async {
+              final picked = _date;
               final max = int.tryParse(_maxCtl.text) ?? 0;
-              if (_date == null || max <= 0) return;
+              if (picked == null || max <= 0) return;
               AppFeedback.success();
-              await widget.onCreate(DateFormat('EEE, MMM d, y').format(_date!), max);
+              await widget.onCreate(
+                  DateFormat('EEE, MMM d, y').format(picked), max);
             },
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: const Text('🚀 Create Event',

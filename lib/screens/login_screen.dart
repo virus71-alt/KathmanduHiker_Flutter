@@ -185,10 +185,11 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
       String profilePicUrl = '';
-      if (_profileImage != null) {
+      final pic = _profileImage;
+      if (pic != null) {
         try {
           final ref = _storage.ref().child('profiles/$uid.jpg');
-          await ref.putFile(_profileImage!);
+          await ref.putFile(pic);
           profilePicUrl = await ref.getDownloadURL();
         } catch (_) {
           // Profile picture upload failure is non-fatal — the user can edit
@@ -330,11 +331,11 @@ class _LoginScreenState extends State<LoginScreen>
       final userRef = _db.collection('users').doc(user.uid);
       final existing = await userRef.get();
       if (!existing.exists) {
+        final googleName = user.displayName?.trim();
         await userRef.set({
-          'displayName':
-              user.displayName?.trim().isNotEmpty == true
-                  ? user.displayName!.trim()
-                  : (account.displayName ?? account.email.split('@').first),
+          'displayName': (googleName != null && googleName.isNotEmpty)
+              ? googleName
+              : (account.displayName ?? account.email.split('@').first),
           'dob': '',
           'location': '',
           'phone': '',
@@ -488,14 +489,14 @@ class _LoginScreenState extends State<LoginScreen>
                               keyboard: TextInputType.emailAddress),
                           const SizedBox(height: 12),
                           _passwordField(scheme),
-                          if (_error != null) ...[
+                          if (_error case final err?) ...[
                             const SizedBox(height: 14),
                             _statusBanner(
-                                _error!, scheme.error, Icons.error_outline),
+                                err, scheme.error, Icons.error_outline),
                           ],
-                          if (_resetMsg != null) ...[
+                          if (_resetMsg case final msg?) ...[
                             const SizedBox(height: 14),
-                            _statusBanner(_resetMsg!, scheme.tertiary,
+                            _statusBanner(msg, scheme.tertiary,
                                 Icons.mark_email_read_outlined),
                           ],
                           const SizedBox(height: 22),
@@ -747,44 +748,47 @@ class _LoginScreenState extends State<LoginScreen>
               AppFeedback.tap();
               _pickImage();
             },
-            child: Stack(
-              children: [
-                Container(
-                  width: 104,
-                  height: 104,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: scheme.surfaceContainerHighest,
-                    border: Border.all(
-                        color: scheme.outlineVariant, width: 2),
-                    image: _profileImage != null
-                        ? DecorationImage(
-                            image: FileImage(_profileImage!),
-                            fit: BoxFit.cover)
-                        : null,
-                  ),
-                  child: _profileImage == null
-                      ? Icon(Icons.person_outline_rounded,
-                          size: 44, color: scheme.onSurfaceVariant)
-                      : null,
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 32,
-                    height: 32,
+            child: Builder(builder: (_) {
+              final pic = _profileImage;
+              return Stack(
+                children: [
+                  Container(
+                    width: 104,
+                    height: 104,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: scheme.primary,
-                      border: Border.all(color: scheme.surface, width: 2),
+                      color: scheme.surfaceContainerHighest,
+                      border: Border.all(
+                          color: scheme.outlineVariant, width: 2),
+                      image: pic != null
+                          ? DecorationImage(
+                              image: FileImage(pic),
+                              fit: BoxFit.cover)
+                          : null,
                     ),
-                    child: Icon(Icons.camera_alt_rounded,
-                        size: 16, color: scheme.onPrimary),
+                    child: pic == null
+                        ? Icon(Icons.person_outline_rounded,
+                            size: 44, color: scheme.onSurfaceVariant)
+                        : null,
                   ),
-                ),
-              ],
-            ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: scheme.primary,
+                        border: Border.all(color: scheme.surface, width: 2),
+                      ),
+                      child: Icon(Icons.camera_alt_rounded,
+                          size: 16, color: scheme.onPrimary),
+                    ),
+                  ),
+                ],
+              );
+            }),
           ),
         ),
         const SizedBox(height: 18),

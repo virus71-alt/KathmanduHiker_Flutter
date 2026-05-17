@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart' as pkg;
@@ -102,14 +105,23 @@ class AppLog {
     }
   }
 
-  /// Sets the hashed user id on Crashlytics for crash attribution.
-  /// NEVER pass the raw uid if it can be reversed to a real user identity
-  /// outside of Firebase Auth — but Firebase uids are already opaque so
-  /// passing them through is acceptable per their docs.
+  /// Sets a hashed user id on Crashlytics for crash attribution.
+  ///
+  /// Per ULTIMATE.md §3.3.2 we never send the raw Firebase uid: it's already
+  /// opaque, but defence in depth means an analytics pipeline that mirrors
+  /// the Crashlytics identifier later cannot rejoin it to Auth records by
+  /// accident. SHA-256 truncated to 16 hex chars stays uniquely identifying
+  /// at the project's user-base size while staying short for dashboards.
   static Future<void> setUser(String? uid) async {
     try {
-      await FirebaseCrashlytics.instance.setUserIdentifier(uid ?? '');
+      final id = (uid == null || uid.isEmpty) ? '' : _hashUid(uid);
+      await FirebaseCrashlytics.instance.setUserIdentifier(id);
     } catch (_) {}
+  }
+
+  static String _hashUid(String uid) {
+    final digest = sha256.convert(utf8.encode(uid));
+    return digest.toString().substring(0, 16);
   }
 
   // ── Internals ──────────────────────────────────────────────────────

@@ -37,10 +37,11 @@ class PublicProfileScreen extends StatelessWidget {
         stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
         builder: (_, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (!(snap.data?.exists ?? false)) {
+          final doc = snap.requireData;
+          if (!doc.exists) {
             return const Center(child: Text('User not found.'));
           }
-          final d = snap.data!.data() ?? {};
+          final d = doc.data() ?? <String, dynamic>{};
           final name = (d['displayName'] ?? 'Hiker') as String;
           final bio = (d['bio'] ?? '') as String;
           final location = (d['location'] ?? '') as String;

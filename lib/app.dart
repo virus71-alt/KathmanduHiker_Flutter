@@ -318,6 +318,70 @@ class _RootShellState extends State<RootShell> {
     await _db.collection('trails').doc(trailId).delete();
   }
 
+  /// Removes every piece of data associated with the current user, then
+  /// deletes the Auth user itself. Per ULTIMATE.md §11.1.4 / §10.3 this is
+  /// the in-app account-deletion path Google Play requires.
+  ///
+  /// Returns `null` on success or a user-facing message on failure. The
+  /// common failure is `requires-recent-login` (Firebase requires a fresh
+  /// re-auth before a delete) — in that case we ask the user to log out
+  /// and back in, then try again.
+  Future<String?> _deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return 'You are already signed out.';
+    final uid = user.uid;
+    AppLog.breadcrumb('account.delete.start');
+    try {
+      // 1) Wipe the Firestore profile + notifications subcollection.
+      final notifs = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .get();
+      final batch = _db.batch();
+      for (final d in notifs.docs) {
+        batch.delete(d.reference);
+      }
+      batch.delete(_db.collection('users').doc(uid));
+      await batch.commit();
+
+      // 2) Mark the user's trail submissions as anonymous so other
+      //    users don't see a dangling "by ?" — we don't delete trails
+      //    because they're shared community content.
+      final mine = await _db
+          .collection('trails')
+          .where('authorId', isEqualTo: uid)
+          .get();
+      for (final d in mine.docs) {
+        await d.reference.update({
+          'authorId': '',
+          'authorName': 'Deleted user',
+        });
+      }
+
+      // 3) Best-effort wipe of the profile picture in Storage. The user
+      //    may not have uploaded one; ignore "object not found".
+      try {
+        await _storage.ref().child('profiles/$uid.jpg').delete();
+      } catch (_) {}
+
+      // 4) Finally, delete the Auth user. AuthGate will route to login
+      //    on the next StreamBuilder rebuild.
+      await user.delete();
+      AppLog.i('account.delete.success');
+      return null;
+    } on FirebaseAuthException catch (e) {
+      AppLog.w('account.delete.authError', data: {'code': e.code});
+      if (e.code == 'requires-recent-login') {
+        return 'For security, please log out, log back in, and try again.';
+      }
+      return 'Could not delete account: ${e.code}';
+    } catch (e, s) {
+      AppLog.e('account.delete.fail', error: e, stack: s);
+      return 'Could not delete account. Please try again.';
+    }
+  }
+
   Future<void> _approveTrail(String id) async {
     final doc = await _db.collection('trails').doc(id).get();
     final authorId = doc.data()?['authorId'] as String? ?? '';
@@ -381,24 +445,26 @@ class _RootShellState extends State<RootShell> {
     // Overlay screens — they sit above the bottom nav. Each is wrapped in
     // PopScope so OS back is intercepted and routed to its close callback,
     // preventing the app from exiting unexpectedly.
-    if (_viewingProfileId != null) {
+    final viewingProfileId = _viewingProfileId;
+    if (viewingProfileId != null) {
       return _withBackHandler(
         PublicProfileScreen(
-          userId: _viewingProfileId!,
+          userId: viewingProfileId,
           onBack: () => setState(() => _viewingProfileId = null),
           onRemoveFriend: () async {
-            await _removeFriend(_viewingProfileId!);
+            await _removeFriend(viewingProfileId);
             if (mounted) setState(() => _viewingProfileId = null);
           },
         ),
         () => setState(() => _viewingProfileId = null),
       );
     }
-    if (_chatFriendId != null) {
+    final chatFriendId = _chatFriendId;
+    if (chatFriendId != null) {
       return _withBackHandler(
         ChatScreen(
           currentUserId: _uid,
-          friendId: _chatFriendId!,
+          friendId: chatFriendId,
           friendName: _chatFriendName,
           onBack: () => setState(() => _chatFriendId = null),
           onProfileClick: () => setState(() {
@@ -409,20 +475,21 @@ class _RootShellState extends State<RootShell> {
         () => setState(() => _chatFriendId = null),
       );
     }
-    if (_currentTrail != null) {
+    final currentTrail = _currentTrail;
+    if (currentTrail != null) {
       return _withBackHandler(
         TrailDetailScreen(
-          trail: _currentTrail!,
+          trail: currentTrail,
           currentUserId: _uid,
           currentUserName: _userName,
           currentUserPic: _userProfilePic,
           myFriends: _myFriends,
           mySentRequests: _mySentRequests,
-          isFavorite: _favoriteIds.contains(_currentTrail!.id),
+          isFavorite: _favoriteIds.contains(currentTrail.id),
           onBack: () => setState(() => _currentTrail = null),
           onSendFriendRequest: _sendFriendRequest,
           onCancelFriendRequest: _cancelFriendRequest,
-          onToggleFavorite: () => _toggleFavorite(_currentTrail!.id),
+          onToggleFavorite: () => _toggleFavorite(currentTrail.id),
         ),
         () => setState(() => _currentTrail = null),
       );
@@ -520,6 +587,7 @@ class _RootShellState extends State<RootShell> {
           onAchievementsClick: () => setState(() => _currentTab = 'Achievements'),
           onUpdateProfile: _updateProfile,
           onDeletePending: _deleteTrail,
+          onDeleteAccount: _deleteAccount,
         );
         break;
       case 'Achievements':

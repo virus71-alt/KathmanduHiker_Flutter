@@ -35,6 +35,11 @@ class ProfileScreen extends StatefulWidget {
     File? newImage,
   }) onUpdateProfile;
   final Future<void> Function(String trailId) onDeletePending;
+  // ULTIMATE.md §11.1.4 / §10.3 — required by Google Play.
+  // Returns null on success; a user-facing error message otherwise (e.g.
+  // 'requires-recent-login'). On success, AuthGate naturally routes back
+  // to LoginScreen, so the caller does not need to navigate.
+  final Future<String?> Function() onDeleteAccount;
 
   const ProfileScreen({
     super.key,
@@ -56,6 +61,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onAchievementsClick,
     required this.onUpdateProfile,
     required this.onDeletePending,
+    required this.onDeleteAccount,
   });
 
   @override
@@ -136,7 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _showSettings() async {
     AppFeedback.tap();
-    await showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       shape: const RoundedRectangleBorder(
@@ -182,12 +188,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     widget.onLogout();
                   },
                 ),
+                const SizedBox(height: 8),
+                // ULTIMATE.md §11.1.4 — Google Play requires an in-app
+                // path to delete the account. We re-use the existing
+                // "type to confirm" pattern from the admin wipe flow so
+                // the destructive action is intentional.
+                _settingsTile(
+                  icon: Icons.delete_forever_rounded,
+                  label: 'Delete Account',
+                  tint: scheme.error,
+                  onTap: () async {
+                    AppFeedback.warning();
+                    Navigator.pop(sheetCtx);
+                    await _confirmDeleteAccount();
+                  },
+                ),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  /// Two-step confirmation, then call up to RootShell. We never delete
+  /// silently — destructive + irreversible action per ULTIMATE.md §0.9.
+  Future<void> _confirmDeleteAccount() async {
+    final scheme = Theme.of(context).colorScheme;
+    final confirmCtl = TextEditingController();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => StatefulBuilder(
+        builder: (_, setDialog) => AlertDialog(
+          title: const Text('Delete your account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This permanently removes your profile, friend list, '
+                'notifications, and any trail submissions you made. '
+                'This cannot be undone.\n\nType DELETE to confirm.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtl,
+                autofocus: true,
+                onChanged: (_) => setDialog(() {}),
+                decoration: const InputDecoration(hintText: 'DELETE'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dCtx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: scheme.error),
+              onPressed: confirmCtl.text.trim() == 'DELETE'
+                  ? () => Navigator.pop(dCtx, true)
+                  : null,
+              child: const Text('Delete forever'),
+            ),
+          ],
+        ),
+      ),
+    );
+    confirmCtl.dispose();
+    if (go != true) return;
+    if (!mounted) return;
+
+    final err = await widget.onDeleteAccount();
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err)),
+      );
+    }
   }
 
   Widget _themeChoice(ThemeMode current) {
@@ -393,9 +471,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   border: Border.all(color: scheme.primary, width: 3),
                 ),
                 child: ClipOval(
-                  child: _newImage != null
-                      ? Image.file(_newImage!, fit: BoxFit.cover)
-                      : widget.userProfilePic.isNotEmpty
+                  child: Builder(builder: (_) {
+                    final img = _newImage;
+                    return img != null
+                        ? Image.file(img, fit: BoxFit.cover)
+                        : widget.userProfilePic.isNotEmpty
                           ? CachedNetworkImage(
                               imageUrl: widget.userProfilePic,
                               fit: BoxFit.cover,
@@ -417,7 +497,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   style: AppText.headlineLg(scheme.primary),
                                 ),
                               ),
-                            ),
+                            );
+                  }),
                 ),
               ),
               if (_editing)

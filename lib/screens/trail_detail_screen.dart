@@ -236,7 +236,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       status = 'Hike too short';
     }
     if (!mounted) return;
-    showDialog(
+    unawaited(showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(status),
@@ -245,7 +245,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
         ],
       ),
-    );
+    ));
   }
 
   Future<void> _sharePhoto() async {
@@ -507,7 +507,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   Future<void> _openCreateEvent() async {
     AppFeedback.tap();
-    showModalBottomSheet(
+    unawaited(showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -558,7 +558,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           if (sheetCtx.mounted) Navigator.pop(sheetCtx);
         },
       ),
-    );
+    ));
   }
 
   Future<void> _joinEvent(HikeEvent event) async {
@@ -1225,10 +1225,10 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
                       style: AppText.labelSm(scheme.onSurfaceVariant)
                           .copyWith(height: 1.35),
                     ),
-                    if (_lastHikeKm != null && !showKm) ...[
+                    if (_lastHikeKm case final km? when !showKm) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Previous best: ${_lastHikeKm!.toStringAsFixed(2)} km',
+                        'Previous best: ${km.toStringAsFixed(2)} km',
                         style: AppText.labelSm(scheme.primary)
                             .copyWith(fontWeight: FontWeight.w700),
                       ),
@@ -1545,10 +1545,10 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
                               style: AppText.labelSm(scheme.onSurfaceVariant)
                                   .copyWith(height: 1.35),
                             ),
-                            if (stops[i].note != null) ...[
+                            if (stops[i].note case final note?) ...[
                               const SizedBox(height: 4),
                               Text(
-                                stops[i].note!,
+                                note,
                                 style: AppText.labelSm(scheme.primary)
                                     .copyWith(fontWeight: FontWeight.w800),
                               ),

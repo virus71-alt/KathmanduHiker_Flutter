@@ -92,14 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _dialEmergency(String num) async {
     AppFeedback.warning();
     final uri = Uri.parse('tel:$num');
-    if (await canLaunchUrl(uri)) launchUrl(uri);
+    if (await canLaunchUrl(uri)) unawaited(launchUrl(uri));
   }
 
   Future<void> _sendSosSms() async {
     AppFeedback.tap();
     final uri = Uri.parse(
         'sms:?body=${Uri.encodeComponent('SOS! I need help. Last known location: https://maps.google.com/?q=27.7172,85.3240')}');
-    if (await canLaunchUrl(uri)) launchUrl(uri);
+    if (await canLaunchUrl(uri)) unawaited(launchUrl(uri));
   }
 
   Future<void> _toggleSiren() async {
@@ -847,6 +847,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMapView(List<Trail> hikes) {
     final scheme = Theme.of(context).colorScheme;
+    // Capture the nullable field into a local for §19.8 — within this
+    // build method `_selectedMapTrail` could theoretically be set null by
+    // a concurrent setState, so we read it once into a non-null local.
+    final selected = _selectedMapTrail;
     final markers = <Marker>{};
     for (final t in hikes) {
       final hasPicked = t.latitude != 0.0 || t.longitude != 0.0;
@@ -872,7 +876,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mapToolbarEnabled: false,
           markers: markers,
         ),
-        if (_selectedMapTrail != null)
+        if (selected != null)
           Positioned(
             left: 16,
             right: 16,
@@ -885,7 +889,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 onTap: () {
                   AppFeedback.tap();
-                  widget.onTrailClick(_selectedMapTrail!);
+                  widget.onTrailClick(selected);
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -894,8 +898,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(AppRadius.base),
                         child: CachedNetworkImage(
-                          imageUrl: _selectedMapTrail!.imageUrls.isNotEmpty
-                              ? _selectedMapTrail!.imageUrls[0]
+                          imageUrl: selected.imageUrls.isNotEmpty
+                              ? selected.imageUrls[0]
                               : 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b',
                           width: 60,
                           height: 60,
@@ -907,10 +911,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_selectedMapTrail!.name,
+                            Text(selected.name,
                                 style: AppText.labelLg(scheme.onSurface)),
                             Text(
-                                'Difficulty: ${_selectedMapTrail!.difficulty}',
+                                'Difficulty: ${selected.difficulty}',
                                 style: AppText.labelSm(
                                     scheme.onSurfaceVariant)),
                           ],

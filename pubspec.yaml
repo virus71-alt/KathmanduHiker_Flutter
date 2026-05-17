@@ -33,6 +33,11 @@ dependencies:
   # ULTIMATE.md §9.2, all production logs go through this and never log PII.
   logger: ^2.4.0
 
+  # SHA-256 hashing for Crashlytics user identifiers. Per ULTIMATE.md §3.3.2
+  # we never send a raw uid even though Firebase uids are opaque — defence
+  # in depth in case a future analytics pipeline mirrors the identifier.
+  crypto: ^3.0.6
+
   # Maps + Location
   google_maps_flutter: ^2.10.0
   geolocator: ^13.0.1

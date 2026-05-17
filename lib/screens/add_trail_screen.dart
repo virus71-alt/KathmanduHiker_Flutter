@@ -214,7 +214,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
 
       if (!mounted) return;
       setState(() => _submitting = false);
-      await showDialog(
+      await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (_) => AlertDialog(

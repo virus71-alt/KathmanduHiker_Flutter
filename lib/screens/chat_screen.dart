@@ -153,7 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _openActions(ChatMessage m) {
     final mine = m.senderId == widget.currentUserId;
     final scheme = Theme.of(context).colorScheme;
-    showModalBottomSheet(
+    unawaited(showModalBottomSheet<void>(
       context: context,
       backgroundColor: scheme.surface,
       shape: const RoundedRectangleBorder(
@@ -228,7 +228,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
-    );
+    ));
   }
 
   Widget _actionTile(IconData icon, String label, VoidCallback onTap,

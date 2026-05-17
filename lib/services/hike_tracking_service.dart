@@ -71,14 +71,20 @@ class HikeTrackingService {
         _lastAt = now;
         return;
       }
-      if (_last != null && _lastAt != null) {
+      // Local-capture pattern (ULTIMATE.md §19.8): copy the nullable
+      // class fields into locals so Dart's flow analysis knows they stay
+      // non-null for the rest of the block. A bang on `_last!` would
+      // technically work here but the lint rightly flags it.
+      final prev = _last;
+      final prevAt = _lastAt;
+      if (prev != null && prevAt != null) {
         final delta = Geolocator.distanceBetween(
-          _last!.latitude,
-          _last!.longitude,
+          prev.latitude,
+          prev.longitude,
           pos.latitude,
           pos.longitude,
         );
-        final dtSec = now.difference(_lastAt!).inMilliseconds / 1000.0;
+        final dtSec = now.difference(prevAt).inMilliseconds / 1000.0;
         // Reported speed is unreliable on some devices, so derive it
         // from the time/distance delta as well and take the larger of the
         // two — being conservative keeps vehicle travel out of the total.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -174,12 +176,13 @@ class AdminScreen extends StatelessWidget {
     if (ok != true) return;
     if (!context.mounted) return;
 
-    // Progress dialog while the wipe runs.
-    showDialog(
+    // Progress dialog while the wipe runs — intentionally fire-and-forget;
+    // we dismiss it ourselves with Navigator.pop below.
+    unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    ));
     final result = await _wipeAllData();
     if (context.mounted) Navigator.of(context).pop();
     if (context.mounted) {
@@ -423,7 +426,7 @@ class AdminScreen extends StatelessWidget {
     String difficulty = t.difficulty;
     final difficulties = const ['Easy', 'Moderate', 'Hard', 'Challenging'];
 
-    await showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,

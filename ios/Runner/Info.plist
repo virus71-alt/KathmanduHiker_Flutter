@@ -116,6 +116,16 @@
 		</dict>
 	</array>
 
+	<!-- Encryption export compliance, per ULTIMATE.md §11.2.6.
+	     We only use HTTPS (TLS), Apple platform crypto, and Firebase Auth
+	     (which uses platform crypto). None of that requires a US export
+	     license, so we declare false here and Apple skips the additional
+	     encryption questionnaire on every TestFlight / App Store upload.
+	     If we ever ship our own crypto implementation, change this to true
+	     and file the ERN. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
 	<!-- App Transport Security — strict, per ULTIMATE.md §2.2 / §2.6.
 	     Defaults are already strict on iOS 9+, but making it explicit
 	     prevents a future engineer from quietly flipping NSAllowsArbitraryLoads
