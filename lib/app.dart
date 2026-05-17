@@ -5,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import 'core/analytics.dart';
 import 'core/logger.dart';
 import 'models/app_notification.dart';
 import 'models/trail.dart';
@@ -13,6 +15,7 @@ import 'screens/achievements_screen.dart';
 import 'screens/add_trail_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/chat_screen.dart';
+import 'screens/force_update_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -20,9 +23,11 @@ import 'screens/profile_screen.dart';
 import 'screens/public_profile_screen.dart';
 import 'screens/social_screen.dart';
 import 'screens/trail_detail_screen.dart';
+import 'services/remote_config_service.dart';
 import 'theme/app_theme.dart';
 import 'utils/feedback.dart';
 import 'utils/ranking_manager.dart';
+import 'widgets/offline_banner.dart';
 
 class KathmanduHikerApp extends StatelessWidget {
   const KathmanduHikerApp({super.key});
@@ -37,17 +42,56 @@ class KathmanduHikerApp extends StatelessWidget {
         theme: buildAppTheme(),
         darkTheme: buildDarkTheme(),
         themeMode: mode,
+        navigatorObservers: [Analytics.navObserver()],
         home: const AuthGate(),
       ),
     );
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool? _outdated;
+  String _updateMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkVersion();
+  }
+
+  Future<void> _checkVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final current = int.tryParse(info.buildNumber) ?? 0;
+      final min = AppConfig.instance.minBuildNumber;
+      if (mounted) {
+        setState(() {
+          _outdated = current < min;
+          _updateMessage = AppConfig.instance.forceUpdateMessage;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _outdated = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_outdated == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_outdated == true) {
+      return ForceUpdateScreen(message: _updateMessage);
+    }
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
@@ -137,6 +181,7 @@ class _RootShellState extends State<RootShell> {
     }
     _uid = user.uid;
     AppLog.setUser(_uid);
+    Analytics.setUser(_uid);
     _wireListeners();
   }
 
@@ -369,6 +414,7 @@ class _RootShellState extends State<RootShell> {
       //    on the next StreamBuilder rebuild.
       await user.delete();
       AppLog.i('account.delete.success');
+      Analytics.accountDeleted();
       return null;
     } on FirebaseAuthException catch (e) {
       AppLog.w('account.delete.authError', data: {'code': e.code});
@@ -419,7 +465,10 @@ class _RootShellState extends State<RootShell> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _openTrail(Trail t) => setState(() => _currentTrail = t);
+  void _openTrail(Trail t) {
+    Analytics.trailView(t.id);
+    setState(() => _currentTrail = t);
+  }
   void _openChat(String id, String name) => setState(() {
         _chatFriendId = id;
         _chatFriendName = name;
@@ -625,7 +674,12 @@ class _RootShellState extends State<RootShell> {
         });
       },
       child: Scaffold(
-        body: SafeArea(child: body),
+        body: Column(
+          children: [
+            const OfflineBanner(),
+            Expanded(child: SafeArea(child: body)),
+          ],
+        ),
         bottomNavigationBar: showBottomBar ? _buildBottomBar() : null,
       ),
     );

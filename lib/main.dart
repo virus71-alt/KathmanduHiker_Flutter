@@ -3,12 +3,15 @@ import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app.dart';
+import 'core/analytics.dart';
 import 'core/logger.dart';
 import 'firebase_options.dart';
+import 'services/remote_config_service.dart';
 import 'theme/app_theme.dart';
 
 /// App entrypoint. Per ULTIMATE.md §3.3, every uncaught error is routed
@@ -28,31 +31,34 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
+      final bootTrace = FirebasePerformance.instance.newTrace('app_boot');
+      await bootTrace.start();
+
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
 
-      // Crashlytics collection toggle. In release builds we always collect;
-      // in debug we respect [kCrashlyticsEnabledInDebug].
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
         kReleaseMode || kCrashlyticsEnabledInDebug,
       );
+      await FirebasePerformance.instance
+          .setPerformanceCollectionEnabled(kReleaseMode);
 
-      // Route Flutter framework errors → Crashlytics (and pretty-print in
-      // debug so they're easy to spot).
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
         FirebaseCrashlytics.instance.recordFlutterFatalError(details);
       };
 
-      // Route uncaught async / isolate errors → Crashlytics.
       PlatformDispatcher.instance.onError = (error, stack) {
         FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
         return true;
       };
 
       await ThemeController.instance.load();
+      await AppConfig.instance.init();
+      await Analytics.appOpen();
 
+      await bootTrace.stop();
       AppLog.i('app.boot.complete');
       runApp(const KathmanduHikerApp());
     },

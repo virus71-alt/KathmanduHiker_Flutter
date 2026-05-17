@@ -17,9 +17,10 @@ dependencies:
   firebase_auth: ^5.3.1
   cloud_firestore: ^5.4.4
   firebase_storage: ^12.3.4
-  # Crashlytics — production crash + non-fatal error reporting.
-  # Per ULTIMATE.md §3.3, integrated from day one (not after launch).
   firebase_crashlytics: ^4.1.3
+  firebase_remote_config: ^5.1.4
+  firebase_analytics: ^11.3.4
+  firebase_performance: ^0.10.0+8
 
   # Google Sign-In — federated auth provider for one-tap login.
   google_sign_in: ^6.2.1
@@ -50,6 +51,7 @@ dependencies:
   http: ^1.2.2
   url_launcher: ^6.3.1
   share_plus: ^10.1.2
+  connectivity_plus: ^6.1.0
 
   # Feedback / SOS siren — uses the phone's built-in ringtone, no asset needed.
   flutter_ringtone_player: ^4.0.0+3
@@ -66,6 +68,7 @@ dependencies:
   permission_handler: ^11.3.1
   shared_preferences: ^2.3.2
   google_fonts: ^6.2.1
+  package_info_plus: ^8.1.1
 
 dev_dependencies:
   # Strict lint set required by ULTIMATE.md §14.1.

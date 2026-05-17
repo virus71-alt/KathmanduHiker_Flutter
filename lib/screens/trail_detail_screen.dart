@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -12,8 +13,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/analytics.dart';
 import '../models/hike_event.dart';
 import '../models/trail.dart';
+import '../utils/permission_rationale.dart';
 import '../models/trail_photo.dart';
 import '../models/trail_review.dart';
 import '../models/weather_response.dart';
@@ -184,6 +187,23 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   Future<void> _startHike() async {
     AppFeedback.success();
+
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      if (!mounted) return;
+      final go = await askPermissionRationale(
+        context,
+        icon: Icons.my_location_rounded,
+        title: 'Track your hike with GPS',
+        whyText:
+            'Kathmandu Hiker uses your location to measure distance, '
+            'time, and your route while you hike. We never share or upload '
+            'your location to other users.',
+        continueLabel: 'Allow location',
+      );
+      if (!go) return;
+    }
+
     final ok = await HikeTrackingService.instance.start(widget.trail.id);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -191,6 +211,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       );
       return;
     }
+    Analytics.hikeStarted(widget.trail.id);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Hike tracking started.')),
@@ -216,6 +237,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     final finalDistance = await HikeTrackingService.instance.stop();
     setState(() => _finishedDistance = finalDistance);
     final km = finalDistance / 1000.0;
+    Analytics.hikeCompleted(widget.trail.id, km);
     int xp = 0;
     String status;
     if (km >= 0.7) {

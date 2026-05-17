@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/analytics.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/image_utils.dart';
@@ -211,6 +212,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
               FieldValue.increment(RankingManager.xpTrailSubmitted),
         });
       }
+      Analytics.trailSubmitted();
 
       if (!mounted) return;
       setState(() => _submitting = false);

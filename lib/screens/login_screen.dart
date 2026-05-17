@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -7,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../core/analytics.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 
@@ -109,9 +111,6 @@ class _LoginScreenState extends State<LoginScreen>
         email: email,
         password: pass,
       );
-      // Defensive: never let an "empty success" propagate. Firebase should
-      // always return a user when the call succeeds, but if for any reason
-      // it doesn't we explicitly sign out and surface a clear error.
       if (cred.user == null || _auth.currentUser == null) {
         await _auth.signOut();
         if (mounted) {
@@ -119,6 +118,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         return;
       }
+      Analytics.login('password');
     } on FirebaseAuthException catch (e) {
       // Map Firebase auth codes to actionable messages. Default falls back
       // to the underlying message so we never silently swallow an error.
@@ -184,6 +184,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         return;
       }
+      Analytics.login('password_signup');
       String profilePicUrl = '';
       final pic = _profileImage;
       if (pic != null) {
@@ -324,6 +325,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         return;
       }
+      Analytics.login('google');
 
       // First-time Google sign-in → create the Firestore profile doc seeded
       // from the Google account. Returning Google users skip this step so
