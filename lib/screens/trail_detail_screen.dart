@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -619,20 +620,20 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   Future<void> _shareTrail() async {
     AppFeedback.tap();
-    final body =
-        'Check out ${widget.trail.name} on Kathmandu Hiker!';
-    final uri = Uri.parse('sms:?body=${Uri.encodeComponent(body)}');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-        return;
-      }
-    } catch (_) {}
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(body)),
-      );
-    }
+    final t = widget.trail;
+    final lines = <String>[
+      '🏔️ ${t.name}',
+      if (t.difficulty.isNotEmpty) 'Difficulty: ${t.difficulty}',
+      if (t.duration.isNotEmpty) 'Duration: ${t.duration}',
+      if (t.latitude != 0 || t.longitude != 0)
+        'Map: https://www.google.com/maps/search/?api=1&query=${t.latitude},${t.longitude}',
+      '',
+      'Shared from Kathmandu Hiker',
+    ];
+    await Share.share(
+      lines.join('\n'),
+      subject: 'Check out this trail: ${t.name}',
+    );
   }
 
   Future<void> _openMaps() async {

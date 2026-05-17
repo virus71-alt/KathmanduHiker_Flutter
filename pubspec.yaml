@@ -49,6 +49,7 @@ dependencies:
   flutter_image_compress: ^2.3.0
   http: ^1.2.2
   url_launcher: ^6.3.1
+  share_plus: ^10.1.2
 
   # Feedback / SOS siren — uses the phone's built-in ringtone, no asset needed.
   flutter_ringtone_player: ^4.0.0+3
