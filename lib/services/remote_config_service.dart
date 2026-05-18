@@ -16,7 +16,7 @@ class AppConfig {
   static const _defaults = <String, dynamic>{
     'min_build_number': 0,
     'force_update_message':
-        'A new version of Kathmandu Hiker is required. Please update from the Play Store.',
+        'A new version of Yama is required. Please update from the Play Store.',
     'show_leaderboard': true,
     'show_community_events': true,
   };

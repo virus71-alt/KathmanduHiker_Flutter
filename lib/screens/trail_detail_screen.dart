@@ -15,7 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/analytics.dart';
 import '../models/hike_event.dart';
-import '../models/trail.dart';
+import '../domain/entities/trail.dart';
 import '../utils/permission_rationale.dart';
 import '../models/trail_photo.dart';
 import '../models/trail_review.dart';
@@ -196,7 +196,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         icon: Icons.my_location_rounded,
         title: 'Track your hike with GPS',
         whyText:
-            'Kathmandu Hiker uses your location to measure distance, '
+            'Yama uses your location to measure distance, '
             'time, and your route while you hike. We never share or upload '
             'your location to other users.',
         continueLabel: 'Allow location',
@@ -650,7 +650,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       if (t.latitude != 0 || t.longitude != 0)
         'Map: https://www.google.com/maps/search/?api=1&query=${t.latitude},${t.longitude}',
       '',
-      'Shared from Kathmandu Hiker',
+      'Shared from Yama',
     ];
     await Share.share(
       lines.join('\n'),

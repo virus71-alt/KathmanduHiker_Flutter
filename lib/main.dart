@@ -32,12 +32,12 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
-      final bootTrace = FirebasePerformance.instance.newTrace('app_boot');
-      await bootTrace.start();
-
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+
+      final bootTrace = FirebasePerformance.instance.newTrace('app_boot');
+      await bootTrace.start();
 
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
         kReleaseMode || kCrashlyticsEnabledInDebug,
@@ -61,7 +61,7 @@ Future<void> main() async {
 
       await bootTrace.stop();
       AppLog.i('app.boot.complete');
-      runApp(const ProviderScope(child: KathmanduHikerApp()));
+      runApp(const ProviderScope(child: YamaApp()));
     },
     (error, stack) {
       // Last-resort net: zone-level errors. These are the ones the two

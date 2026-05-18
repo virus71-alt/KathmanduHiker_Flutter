@@ -1,18 +1,13 @@
-import 'dart:async';
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/analytics.dart';
 import 'core/logger.dart';
-import 'state/auth_state_provider.dart';
-import 'models/app_notification.dart';
-import 'models/trail.dart';
+import 'domain/entities/trail.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/add_trail_screen.dart';
 import 'screens/admin_screen.dart';
@@ -26,20 +21,26 @@ import 'screens/public_profile_screen.dart';
 import 'screens/social_screen.dart';
 import 'screens/trail_detail_screen.dart';
 import 'services/remote_config_service.dart';
+import 'state/auth_state_provider.dart';
+import 'state/current_uid_provider.dart';
+import 'state/navigation_providers.dart';
+import 'state/notifications_provider.dart';
+import 'state/repositories.dart';
+import 'state/trail_providers.dart';
+import 'state/user_profile_provider.dart';
 import 'theme/app_theme.dart';
 import 'utils/feedback.dart';
-import 'utils/ranking_manager.dart';
 import 'widgets/offline_banner.dart';
 
-class KathmanduHikerApp extends StatelessWidget {
-  const KathmanduHikerApp({super.key});
+class YamaApp extends StatelessWidget {
+  const YamaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.instance.mode,
       builder: (_, mode, __) => MaterialApp(
-        title: 'Kathmandu Hiker',
+        title: 'Yama',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
         darkTheme: buildDarkTheme(),
@@ -104,168 +105,44 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   }
 }
 
-/// Holds the global app state and orchestrates navigation between
-/// Home / Social / Favorites / Profile (and overlays Trail / Chat / Profile views).
-class RootShell extends StatefulWidget {
+/// Holds navigation state and orchestrates screen switching.
+/// All Firestore data is owned by Riverpod providers — no stream subscriptions
+/// here. Per-screen provider wiring happens in PR 5; screens still receive
+/// data via constructor params from this shell for now.
+class RootShell extends ConsumerStatefulWidget {
   const RootShell({super.key});
 
   @override
-  State<RootShell> createState() => _RootShellState();
+  ConsumerState<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<RootShell> {
-  final _auth = FirebaseAuth.instance;
-  final _db = FirebaseFirestore.instance;
-  final _storage = FirebaseStorage.instance;
-
-  String _currentTab = 'Home';
-  Trail? _currentTrail;
-  String? _chatFriendId;
-  String _chatFriendName = '';
-  String? _viewingProfileId;
-
-  // Live data
-  List<Trail> _cloudHikes = [];
-  Set<String> _favoriteIds = {};
-  List<Trail> _mySubmissions = [];
-  List<Trail> _adminPendingHikes = [];
-  List<String> _myFriends = [];
-  List<String> _mySentRequests = [];
-  List<String> _myReceivedRequests = [];
-  List<String> _myUnreadChatIds = [];
-  List<AppNotification> _myNotifications = [];
-
-  bool _isAdmin = false;
-  bool _isLoading = true;
-
-  // User profile
-  String _userName = 'Hiker';
-  String _userBio = '';
-  String _userLocation = '';
-  String _userProfilePic = '';
-  String _userDob = '';
-  String _userPhone = '';
-  String _userInsta = '';
-  bool _userShowPhone = false;
-  int _userXP = 0;
-  String _hikerLevel = 'Beginner';
-
-  late final String _uid;
-
-  // Every Firestore stream subscription is captured here so we can cancel
-  // them all in dispose. Without this, signing out and signing back in (or
-  // any future hot-restart of the shell) would leak listeners on stale
-  // Firestore connections and burn quota.
-  final List<StreamSubscription<dynamic>> _subs = [];
-
+class _RootShellState extends ConsumerState<RootShell> {
   @override
   void initState() {
     super.initState();
-    // Defensive: RootShell is only mounted by AuthGate when a User is
-    // present, but we never trust a `!` against an external source. If
-    // somehow currentUser is null we sign out and let AuthGate re-route
-    // back to LoginScreen instead of crashing on the bang.
-    final user = _auth.currentUser;
-    if (user == null) {
-      AppLog.e('shell.boot.noUser');
-      // Trigger an immediate signOut so AuthGate's StreamBuilder rebuilds
-      // and lands on LoginScreen on the next frame.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _auth.signOut();
-      });
-      _uid = '';
-      return;
-    }
-    _uid = user.uid;
-    AppLog.setUser(_uid);
-    Analytics.setUser(_uid);
-    _wireListeners();
+    final uid = ref.read(currentUidProvider);
+    AppLog.setUser(uid);
+    Analytics.setUser(uid);
   }
 
-  @override
-  void dispose() {
-    for (final s in _subs) {
-      s.cancel();
-    }
-    _subs.clear();
-    super.dispose();
+  // ─── Navigation ──────────────────────────────────────────────────────────
+
+  void _openTrail(Trail t) {
+    Analytics.trailView(t.id);
+    ref.read(currentTrailProvider.notifier).state = t;
   }
 
-  void _wireListeners() {
-    _subs.add(_db
-        .collection('trails')
-        .where('isApproved', isEqualTo: true)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _cloudHikes = s.docs
-            .map((d) => Trail.fromDoc(d).copyWith(isApproved: true))
-            .toList();
-        _isLoading = false;
-      });
-    }));
+  void _openChat(String id, String name) =>
+      ref.read(currentChatProvider.notifier).state = (id: id, name: name);
 
-    _subs.add(_db
-        .collection('trails')
-        .where('authorId', isEqualTo: _uid)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _mySubmissions = s.docs.map(Trail.fromDoc).toList();
-      });
-    }));
+  void _openProfile(String id) =>
+      ref.read(viewingProfileProvider.notifier).state = id;
 
-    _subs.add(_db
-        .collection('trails')
-        .where('isApproved', isEqualTo: false)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _adminPendingHikes = s.docs.map(Trail.fromDoc).toList();
-      });
-    }));
+  void _setTab(String tab) =>
+      ref.read(selectedTabProvider.notifier).state = tab;
 
-    _subs.add(_db
-        .collection('users')
-        .doc(_uid)
-        .collection('notifications')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _myNotifications = s.docs.map(AppNotification.fromDoc).toList();
-      });
-    }));
+  // ─── Actions through repositories ────────────────────────────────────────
 
-    _subs.add(_db.collection('users').doc(_uid).snapshots().listen((doc) {
-      if (!mounted || !doc.exists) return;
-      final d = doc.data() ?? {};
-      setState(() {
-        _isAdmin = (d['role'] ?? '') == 'admin';
-        _userName = (d['displayName'] ?? 'Hiker') as String;
-        _userBio = (d['bio'] ?? '') as String;
-        _userLocation = (d['location'] ?? '') as String;
-        _userProfilePic = (d['profilePic'] ?? '') as String;
-        _userDob = (d['dob'] ?? '') as String;
-        _userPhone = (d['phone'] ?? '') as String;
-        _userInsta = (d['insta'] ?? '') as String;
-        _userShowPhone = (d['showPhone'] ?? false) as bool;
-        _userXP = ((d['totalXP'] ?? 0) as num).toInt();
-        _hikerLevel = (d['hikerLevel'] ?? 'Beginner') as String;
-        _favoriteIds = ((d['favoriteTrails'] as List?) ?? const []).cast<String>().toSet();
-        _myFriends = ((d['friends'] as List?) ?? const []).cast<String>();
-        _mySentRequests = ((d['sentRequests'] as List?) ?? const []).cast<String>();
-        _myReceivedRequests = ((d['receivedRequests'] as List?) ?? const []).cast<String>();
-        _myUnreadChatIds = ((d['unreadChatIds'] as List?) ?? const []).cast<String>();
-      });
-    }));
-  }
-
-  // ─── Profile + Friends actions ────────────────────────────────────────────
   Future<void> _updateProfile({
     required String name,
     required String bio,
@@ -275,186 +152,109 @@ class _RootShellState extends State<RootShell> {
     required bool showPhone,
     File? newImage,
   }) async {
-    final userRef = _db.collection('users').doc(_uid);
-    final updates = <String, dynamic>{
-      'displayName': name,
-      'bio': bio,
-      'location': location,
-      'phone': phone,
-      'insta': insta,
-      'showPhone': showPhone,
-    };
-    if (newImage != null) {
-      final ref = _storage.ref().child('profiles/$_uid.jpg');
-      await ref.putFile(newImage);
-      updates['profilePic'] = await ref.getDownloadURL();
-    }
-    await userRef.update(updates);
+    final uid = ref.read(currentUidProvider);
+    await ref.read(userRepositoryProvider).updateProfile(
+      uid: uid,
+      displayName: name,
+      bio: bio,
+      location: location,
+      phone: phone,
+      insta: insta,
+      showPhone: showPhone,
+      profileImage: newImage,
+    );
   }
 
   Future<void> _toggleFavorite(String trailId) async {
-    final userRef = _db.collection('users').doc(_uid);
-    if (_favoriteIds.contains(trailId)) {
-      await userRef.update({'favoriteTrails': FieldValue.arrayRemove([trailId])});
-    } else {
-      await userRef.update({'favoriteTrails': FieldValue.arrayUnion([trailId])});
-    }
+    final uid = ref.read(currentUidProvider);
+    final isFav = ref
+            .read(userProfileProvider)
+            .valueOrNull
+            ?.favoriteTrailIds
+            .contains(trailId) ??
+        false;
+    await ref.read(userRepositoryProvider).toggleFavorite(
+      uid: uid,
+      trailId: trailId,
+      add: !isFav,
+    );
   }
 
   Future<void> _sendFriendRequest(String targetId) async {
-    await _db.collection('users').doc(targetId).update({
-      'receivedRequests': FieldValue.arrayUnion([_uid])
-    });
-    await _db.collection('users').doc(_uid).update({
-      'sentRequests': FieldValue.arrayUnion([targetId])
-    });
+    final uid = ref.read(currentUidProvider);
+    await ref
+        .read(userRepositoryProvider)
+        .sendFriendRequest(fromUid: uid, toUid: targetId);
     _toast('Friend Request Sent! ⏳');
   }
 
   Future<void> _cancelFriendRequest(String targetId) async {
-    await _db.collection('users').doc(targetId).update({
-      'receivedRequests': FieldValue.arrayRemove([_uid])
-    });
-    await _db.collection('users').doc(_uid).update({
-      'sentRequests': FieldValue.arrayRemove([targetId])
-    });
+    final uid = ref.read(currentUidProvider);
+    await ref
+        .read(userRepositoryProvider)
+        .cancelFriendRequest(fromUid: uid, toUid: targetId);
     _toast('Friend Request Cancelled ❌');
   }
 
   Future<void> _acceptRequest(String senderId) async {
-    await _db.collection('users').doc(_uid).update({
-      'friends': FieldValue.arrayUnion([senderId]),
-      'receivedRequests': FieldValue.arrayRemove([senderId]),
-    });
-    await _db.collection('users').doc(senderId).update({
-      'friends': FieldValue.arrayUnion([_uid]),
-      'sentRequests': FieldValue.arrayRemove([_uid]),
-    });
-    await _db.collection('users').doc(senderId).collection('notifications').add({
-      'message': '$_userName accepted your friend request! 🤝',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'isRead': false,
-    });
+    final uid = ref.read(currentUidProvider);
+    final displayName =
+        ref.read(userProfileProvider).valueOrNull?.displayName ?? 'A Hiker';
+    await ref.read(userRepositoryProvider).acceptFriendRequest(
+      uid: uid,
+      displayName: displayName,
+      senderUid: senderId,
+    );
     _toast('Friend Request Accepted! 🎉');
   }
 
   Future<void> _rejectRequest(String senderId) async {
-    await _db.collection('users').doc(_uid).update({
-      'receivedRequests': FieldValue.arrayRemove([senderId])
-    });
-    await _db.collection('users').doc(senderId).update({
-      'sentRequests': FieldValue.arrayRemove([_uid])
-    });
+    final uid = ref.read(currentUidProvider);
+    await ref.read(userRepositoryProvider).rejectFriendRequest(
+      uid: uid,
+      senderUid: senderId,
+    );
   }
 
   Future<void> _removeFriend(String friendId) async {
-    await _db.collection('users').doc(_uid).update({
-      'friends': FieldValue.arrayRemove([friendId])
-    });
-    await _db.collection('users').doc(friendId).update({
-      'friends': FieldValue.arrayRemove([_uid])
-    });
+    final uid = ref.read(currentUidProvider);
+    await ref
+        .read(userRepositoryProvider)
+        .removeFriend(uid: uid, friendUid: friendId);
   }
 
   Future<void> _deleteTrail(String trailId) async {
-    await _db.collection('trails').doc(trailId).delete();
-  }
-
-  /// Removes every piece of data associated with the current user, then
-  /// deletes the Auth user itself. Per ULTIMATE.md §11.1.4 / §10.3 this is
-  /// the in-app account-deletion path Google Play requires.
-  ///
-  /// Returns `null` on success or a user-facing message on failure. The
-  /// common failure is `requires-recent-login` (Firebase requires a fresh
-  /// re-auth before a delete) — in that case we ask the user to log out
-  /// and back in, then try again.
-  Future<String?> _deleteAccount() async {
-    final user = _auth.currentUser;
-    if (user == null) return 'You are already signed out.';
-    final uid = user.uid;
-    AppLog.breadcrumb('account.delete.start');
-    try {
-      // 1) Wipe the Firestore profile + notifications subcollection.
-      final notifs = await _db
-          .collection('users')
-          .doc(uid)
-          .collection('notifications')
-          .get();
-      final batch = _db.batch();
-      for (final d in notifs.docs) {
-        batch.delete(d.reference);
-      }
-      batch.delete(_db.collection('users').doc(uid));
-      await batch.commit();
-
-      // 2) Mark the user's trail submissions as anonymous so other
-      //    users don't see a dangling "by ?" — we don't delete trails
-      //    because they're shared community content.
-      final mine = await _db
-          .collection('trails')
-          .where('authorId', isEqualTo: uid)
-          .get();
-      for (final d in mine.docs) {
-        await d.reference.update({
-          'authorId': '',
-          'authorName': 'Deleted user',
-        });
-      }
-
-      // 3) Best-effort wipe of the profile picture in Storage. The user
-      //    may not have uploaded one; ignore "object not found".
-      try {
-        await _storage.ref().child('profiles/$uid.jpg').delete();
-      } catch (_) {}
-
-      // 4) Finally, delete the Auth user. AuthGate will route to login
-      //    on the next StreamBuilder rebuild.
-      await user.delete();
-      AppLog.i('account.delete.success');
-      Analytics.accountDeleted();
-      return null;
-    } on FirebaseAuthException catch (e) {
-      AppLog.w('account.delete.authError', data: {'code': e.code});
-      if (e.code == 'requires-recent-login') {
-        return 'For security, please log out, log back in, and try again.';
-      }
-      return 'Could not delete account: ${e.code}';
-    } catch (e, s) {
-      AppLog.e('account.delete.fail', error: e, stack: s);
-      return 'Could not delete account. Please try again.';
-    }
+    await ref.read(trailRepositoryProvider).deleteTrail(trailId);
   }
 
   Future<void> _approveTrail(String id) async {
-    final doc = await _db.collection('trails').doc(id).get();
-    final authorId = doc.data()?['authorId'] as String? ?? '';
-    final trailName = doc.data()?['name'] as String? ?? 'Trail';
-    final authorName = doc.data()?['authorName'] as String? ?? 'A Hiker';
-    if (authorId.isNotEmpty) {
-      await _db.collection('users').doc(authorId).collection('notifications').add({
-        'message': "Your trail '$trailName' was approved by an Admin! 🎉",
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'isRead': false,
-      });
-      await _db
-          .collection('users')
-          .doc(authorId)
-          .update({'totalXP': FieldValue.increment(RankingManager.xpTrailApproved)});
-      await _db.collection('activities').add({
-        'userId': authorId,
-        'userName': authorName,
-        'userPic': '',
-        'actionType': 'discovered a new trail:',
-        'targetName': trailName,
-        'targetId': id,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
-    }
-    await _db.collection('trails').doc(id).update({'isApproved': true});
+    await ref.read(trailRepositoryProvider).approveTrail(id);
   }
 
   Future<void> _updatePendingTrail(Trail t) async {
-    await _db.collection('trails').doc(t.id).set(t.toMap());
+    await ref.read(trailRepositoryProvider).updateTrail(t);
+  }
+
+  /// Returns null on success, or a user-facing error message on failure.
+  Future<String?> _deleteAccount() async {
+    final uid = ref.read(currentUidProvider);
+    AppLog.breadcrumb('account.delete.start');
+    final result =
+        await ref.read(userRepositoryProvider).deleteAccount(uid);
+    return result.fold(
+      (failure) {
+        AppLog.w('account.delete.fail', data: {'failure': failure.toString()});
+        if (failure case final f when f.toString().contains('requires-recent-login')) {
+          return 'For security, please log out, log back in, and try again.';
+        }
+        return 'Could not delete account. Please try again.';
+      },
+      (_) {
+        AppLog.i('account.delete.success');
+        Analytics.accountDeleted();
+        return null;
+      },
+    );
   }
 
   void _toast(String msg) {
@@ -462,19 +262,6 @@ class _RootShellState extends State<RootShell> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _openTrail(Trail t) {
-    Analytics.trailView(t.id);
-    setState(() => _currentTrail = t);
-  }
-  void _openChat(String id, String name) => setState(() {
-        _chatFriendId = id;
-        _chatFriendName = name;
-      });
-  void _openProfile(String id) => setState(() => _viewingProfileId = id);
-
-  /// Wraps an overlay screen in a `PopScope` so the system back button
-  /// dismisses the overlay (returns to whatever shell was beneath) instead of
-  /// exiting the app.
   Widget _withBackHandler(Widget child, VoidCallback onBack) {
     return PopScope(
       canPop: false,
@@ -488,116 +275,131 @@ class _RootShellState extends State<RootShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Overlay screens — they sit above the bottom nav. Each is wrapped in
-    // PopScope so OS back is intercepted and routed to its close callback,
-    // preventing the app from exiting unexpectedly.
-    final viewingProfileId = _viewingProfileId;
+    final uid = ref.watch(currentUidProvider);
+    final profile = ref.watch(userProfileProvider).valueOrNull;
+    final trails = ref.watch(approvedTrailsProvider).valueOrNull ?? [];
+    final mySubmissions = ref.watch(mySubmissionsProvider).valueOrNull ?? [];
+    final pendingTrails = ref.watch(pendingTrailsProvider).valueOrNull ?? [];
+    final notifications = ref.watch(notificationsProvider).valueOrNull ?? [];
+    final isLoading = ref.watch(approvedTrailsProvider).isLoading;
+
+    final currentTab = ref.watch(selectedTabProvider);
+    final currentTrail = ref.watch(currentTrailProvider);
+    final currentChat = ref.watch(currentChatProvider);
+    final viewingProfileId = ref.watch(viewingProfileProvider);
+
+    final favoriteIds = profile?.favoriteTrailIds ?? {};
+    final isAdmin = profile?.isAdmin ?? false;
+    final userName = profile?.displayName ?? 'Hiker';
+    final userProfilePic = profile?.profilePic ?? '';
+    final myFriends = profile?.friends ?? [];
+    final mySentRequests = profile?.sentRequests ?? [];
+    final myReceivedRequests = profile?.receivedRequests ?? [];
+    final myUnreadChatIds = profile?.unreadChatIds ?? [];
+
+    // Overlay screens — each wrapped in PopScope so OS back dismisses overlay.
     if (viewingProfileId != null) {
       return _withBackHandler(
         PublicProfileScreen(
           userId: viewingProfileId,
-          onBack: () => setState(() => _viewingProfileId = null),
+          onBack: () => ref.read(viewingProfileProvider.notifier).state = null,
           onRemoveFriend: () async {
             await _removeFriend(viewingProfileId);
-            if (mounted) setState(() => _viewingProfileId = null);
+            if (mounted) {
+              ref.read(viewingProfileProvider.notifier).state = null;
+            }
           },
         ),
-        () => setState(() => _viewingProfileId = null),
+        () => ref.read(viewingProfileProvider.notifier).state = null,
       );
     }
-    final chatFriendId = _chatFriendId;
-    if (chatFriendId != null) {
+
+    if (currentChat != null) {
       return _withBackHandler(
         ChatScreen(
-          currentUserId: _uid,
-          friendId: chatFriendId,
-          friendName: _chatFriendName,
-          onBack: () => setState(() => _chatFriendId = null),
-          onProfileClick: () => setState(() {
-            _viewingProfileId = _chatFriendId;
-            _chatFriendId = null;
-          }),
+          currentUserId: uid,
+          friendId: currentChat.id,
+          friendName: currentChat.name,
+          onBack: () => ref.read(currentChatProvider.notifier).state = null,
+          onProfileClick: () {
+            ref.read(viewingProfileProvider.notifier).state = currentChat.id;
+            ref.read(currentChatProvider.notifier).state = null;
+          },
         ),
-        () => setState(() => _chatFriendId = null),
+        () => ref.read(currentChatProvider.notifier).state = null,
       );
     }
-    final currentTrail = _currentTrail;
+
     if (currentTrail != null) {
       return _withBackHandler(
         TrailDetailScreen(
           trail: currentTrail,
-          currentUserId: _uid,
-          currentUserName: _userName,
-          currentUserPic: _userProfilePic,
-          myFriends: _myFriends,
-          mySentRequests: _mySentRequests,
-          isFavorite: _favoriteIds.contains(currentTrail.id),
-          onBack: () => setState(() => _currentTrail = null),
+          currentUserId: uid,
+          currentUserName: userName,
+          currentUserPic: userProfilePic,
+          myFriends: myFriends,
+          mySentRequests: mySentRequests,
+          isFavorite: favoriteIds.contains(currentTrail.id),
+          onBack: () => ref.read(currentTrailProvider.notifier).state = null,
           onSendFriendRequest: _sendFriendRequest,
           onCancelFriendRequest: _cancelFriendRequest,
           onToggleFavorite: () => _toggleFavorite(currentTrail.id),
         ),
-        () => setState(() => _currentTrail = null),
+        () => ref.read(currentTrailProvider.notifier).state = null,
       );
     }
 
-    final showBottomBar =
-        _currentTab != 'AddTrail' && _currentTab != 'Notifications' && _currentTab != 'Achievements';
+    final showBottomBar = currentTab != 'AddTrail' &&
+        currentTab != 'Notifications' &&
+        currentTab != 'Achievements';
 
     Widget body;
-    switch (_currentTab) {
+    switch (currentTab) {
       case 'Home':
       case 'Favorites':
         body = HomeScreen(
-          hikes: _cloudHikes,
-          favoriteIds: _favoriteIds,
-          showOnlyFavorites: _currentTab == 'Favorites',
-          unreadNotificationCount: _myNotifications.where((n) => !n.isRead).length,
-          userName: _userName,
-          userProfilePic: _userProfilePic,
-          isLoading: _isLoading,
+          hikes: trails,
+          favoriteIds: favoriteIds,
+          showOnlyFavorites: currentTab == 'Favorites',
+          unreadNotificationCount: notifications.where((n) => !n.isRead).length,
+          userName: userName,
+          userProfilePic: userProfilePic,
+          isLoading: isLoading,
           onToggleFavorite: _toggleFavorite,
           onTrailClick: _openTrail,
-          onAddClick: () => setState(() => _currentTab = 'AddTrail'),
-          onNotificationClick: () => setState(() => _currentTab = 'Notifications'),
+          onAddClick: () => _setTab('AddTrail'),
+          onNotificationClick: () => _setTab('Notifications'),
         );
         break;
       case 'Notifications':
         body = NotificationsScreen(
-          notifications: _myNotifications,
-          onBack: () => setState(() => _currentTab = 'Home'),
-          onMarkAsRead: (id) => _db
-              .collection('users')
-              .doc(_uid)
-              .collection('notifications')
-              .doc(id)
-              .update({'isRead': true}),
+          notifications: notifications,
+          onBack: () => _setTab('Home'),
+          onMarkAsRead: (id) async {
+            await ref.read(userRepositoryProvider).markNotificationRead(
+              uid: uid,
+              notificationId: id,
+            );
+          },
           onClearAll: () async {
-            for (final n in _myNotifications) {
-              await _db
-                  .collection('users')
-                  .doc(_uid)
-                  .collection('notifications')
-                  .doc(n.id)
-                  .delete();
-            }
+            await ref.read(userRepositoryProvider).clearAllNotifications(uid);
           },
         );
         break;
       case 'AddTrail':
         body = AddTrailScreen(
-          onSuccess: () => setState(() => _currentTab = 'Home'),
-          onBack: () => setState(() => _currentTab = 'Home'),
+          onSuccess: () => _setTab('Home'),
+          onBack: () => _setTab('Home'),
         );
         break;
       case 'Social':
         body = SocialScreen(
-          currentUserId: _uid,
-          receivedRequests: _myReceivedRequests,
-          sentRequests: _mySentRequests,
-          friends: _myFriends,
-          unreadChatIds: _myUnreadChatIds,
-          validTrailIds: {for (final t in _cloudHikes) t.id},
+          currentUserId: uid,
+          receivedRequests: myReceivedRequests,
+          sentRequests: mySentRequests,
+          friends: myFriends,
+          unreadChatIds: myUnreadChatIds,
+          validTrailIds: {for (final t in trails) t.id},
           onAccept: _acceptRequest,
           onReject: _rejectRequest,
           onSendFriendRequest: _sendFriendRequest,
@@ -605,32 +407,33 @@ class _RootShellState extends State<RootShell> {
           onChatClick: _openChat,
           onProfileClick: _openProfile,
           onFeedItemClick: (trailId) async {
-            final d = await _db.collection('trails').doc(trailId).get();
-            if (d.exists) _openTrail(Trail.fromDoc(d));
+            final result =
+                await ref.read(trailRepositoryProvider).getTrail(trailId);
+            result.fold((_) {}, _openTrail);
           },
         );
         break;
       case 'Profile':
         body = ProfileScreen(
-          userSubmissions: _mySubmissions,
-          isAdmin: _isAdmin,
-          userName: _userName,
-          userEmail: _auth.currentUser?.email ?? '',
-          userDob: _userDob,
-          userBio: _userBio,
-          userLocation: _userLocation,
-          userPhone: _userPhone,
-          userInsta: _userInsta,
-          userShowPhone: _userShowPhone,
-          userProfilePic: _userProfilePic,
-          userXP: _userXP,
-          hikerLevel: _hikerLevel,
+          userSubmissions: mySubmissions,
+          isAdmin: isAdmin,
+          userName: userName,
+          userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+          userDob: profile?.dob ?? '',
+          userBio: profile?.bio ?? '',
+          userLocation: profile?.location ?? '',
+          userPhone: profile?.phone ?? '',
+          userInsta: profile?.insta ?? '',
+          userShowPhone: profile?.showPhone ?? false,
+          userProfilePic: userProfilePic,
+          userXP: profile?.totalXP ?? 0,
+          hikerLevel: profile?.hikerLevel ?? 'Beginner',
           onLogout: () async {
-            await _auth.signOut();
-            if (mounted) setState(() => _currentTab = 'Home');
+            await FirebaseAuth.instance.signOut();
+            if (mounted) _setTab('Home');
           },
-          onAdminClick: () => setState(() => _currentTab = 'Admin'),
-          onAchievementsClick: () => setState(() => _currentTab = 'Achievements'),
+          onAdminClick: () => _setTab('Admin'),
+          onAchievementsClick: () => _setTab('Achievements'),
           onUpdateProfile: _updateProfile,
           onDeletePending: _deleteTrail,
           onDeleteAccount: _deleteAccount,
@@ -638,22 +441,22 @@ class _RootShellState extends State<RootShell> {
         break;
       case 'Achievements':
         body = AchievementsScreen(
-          userXP: _userXP,
-          approvedSubmissions: _mySubmissions.where((t) => t.isApproved).length,
-          onBack: () => setState(() => _currentTab = 'Profile'),
+          userXP: profile?.totalXP ?? 0,
+          approvedSubmissions: mySubmissions.where((t) => t.isApproved).length,
+          onBack: () => _setTab('Profile'),
         );
         break;
       case 'Admin':
-        body = _isAdmin
+        body = isAdmin
             ? AdminScreen(
                 pendingHikes: {
-                  for (final t in [..._adminPendingHikes, ..._cloudHikes]) t.id: t,
+                  for (final t in [...pendingTrails, ...trails]) t.id: t,
                 }.values.toList(),
-                currentAdminId: _uid,
+                currentAdminId: uid,
                 onApprove: _approveTrail,
                 onDelete: _deleteTrail,
                 onUpdate: _updatePendingTrail,
-                onBack: () => setState(() => _currentTab = 'Profile'),
+                onBack: () => _setTab('Profile'),
               )
             : const SizedBox.shrink();
         break;
@@ -661,14 +464,12 @@ class _RootShellState extends State<RootShell> {
         body = const SizedBox.shrink();
     }
 
-    final isOnHome = _currentTab == 'Home';
+    final isOnHome = currentTab == 'Home';
     return PopScope(
       canPop: isOnHome,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() {
-          _currentTab = _currentTab == 'Achievements' ? 'Profile' : 'Home';
-        });
+        _setTab(currentTab == 'Achievements' ? 'Profile' : 'Home');
       },
       child: Scaffold(
         body: Column(
@@ -677,14 +478,21 @@ class _RootShellState extends State<RootShell> {
             Expanded(child: SafeArea(child: body)),
           ],
         ),
-        bottomNavigationBar: showBottomBar ? _buildBottomBar() : null,
+        bottomNavigationBar: showBottomBar ? _buildBottomBar(
+          currentTab: currentTab,
+          isAdmin: isAdmin,
+          socialBadge: myReceivedRequests.length + myUnreadChatIds.length,
+        ) : null,
       ),
     );
   }
 
-  Widget _buildBottomBar() {
-    final socialBadge = _myReceivedRequests.length + _myUnreadChatIds.length;
-    final selectedIndex = switch (_currentTab) {
+  Widget _buildBottomBar({
+    required String currentTab,
+    required bool isAdmin,
+    required int socialBadge,
+  }) {
+    final selectedIndex = switch (currentTab) {
       'Home' => 0,
       'Social' => 1,
       'Favorites' => 2,
@@ -713,7 +521,7 @@ class _RootShellState extends State<RootShell> {
         activeIcon: Icons.bookmark_rounded,
       ),
       _StitchNavTab(
-        key: _isAdmin && _currentTab == 'Admin' ? 'Admin' : 'Profile',
+        key: isAdmin && currentTab == 'Admin' ? 'Admin' : 'Profile',
         label: 'Profile',
         icon: Icons.person_outline_rounded,
         activeIcon: Icons.person_rounded,
@@ -724,9 +532,7 @@ class _RootShellState extends State<RootShell> {
     return Container(
       decoration: BoxDecoration(
         color: chrome.chrome,
-        border: Border(
-          top: BorderSide(color: chrome.chromeBorder),
-        ),
+        border: Border(top: BorderSide(color: chrome.chromeBorder)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -748,7 +554,7 @@ class _RootShellState extends State<RootShell> {
                   selected: i == selectedIndex,
                   onTap: () {
                     AppFeedback.tap();
-                    setState(() => _currentTab = tabs[i].key);
+                    _setTab(tabs[i].key);
                   },
                 ),
             ],

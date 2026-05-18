@@ -576,7 +576,7 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(width: 10),
             Text(
-              'Kathmandu Hiker',
+              'Yama',
               style: TextStyle(
                 color: scheme.onSurface,
                 fontSize: 15,
