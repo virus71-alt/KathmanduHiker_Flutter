@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/trail_providers.dart';
+import '../state/user_profile_provider.dart';
 import '../utils/feedback.dart';
 import '../utils/ranking_manager.dart';
 
@@ -12,16 +15,9 @@ class _Milestone {
   const _Milestone(this.level, this.title, this.emoji, this.xpRequired, this.reward);
 }
 
-class AchievementsScreen extends StatelessWidget {
-  final int userXP;
-  final int approvedSubmissions;
+class AchievementsScreen extends ConsumerWidget {
   final VoidCallback onBack;
-  const AchievementsScreen({
-    super.key,
-    required this.userXP,
-    required this.approvedSubmissions,
-    required this.onBack,
-  });
+  const AchievementsScreen({super.key, required this.onBack});
 
   static const _milestones = <_Milestone>[
     _Milestone(1, 'New Hiker', '🌱', 0, 'Welcome badge'),
@@ -40,8 +36,15 @@ class AchievementsScreen extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
+    final profile = ref.watch(userProfileProvider).valueOrNull;
+    final mySubmissions = ref.watch(mySubmissionsProvider).valueOrNull ?? [];
+
+    final userXP = profile?.totalXP ?? 0;
+    final approvedSubmissions =
+        mySubmissions.where((t) => t.isApproved).length;
+
     final levelNum = RankingManager.getLevelNumber(userXP);
     final levelTitle = RankingManager.getLevelTitle(userXP);
     final next = RankingManager.getNextLevelXp(userXP);
@@ -73,7 +76,8 @@ class AchievementsScreen extends StatelessWidget {
                 CircleAvatar(
                   radius: 40,
                   backgroundColor: colors.onPrimary.withOpacity(0.15),
-                  child: Icon(Icons.emoji_events, color: colors.onPrimary, size: 44),
+                  child: Icon(Icons.emoji_events,
+                      color: colors.onPrimary, size: 44),
                 ),
                 const SizedBox(height: 10),
                 Text('Level $levelNum',
@@ -112,7 +116,8 @@ class AchievementsScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _stat('Total XP', userXP.toString(), '✨'),
-                      _stat('Trails Approved', approvedSubmissions.toString(), '✅'),
+                      _stat('Trails Approved', approvedSubmissions.toString(),
+                          '✅'),
                       _stat('Level', levelNum.toString(), '🎯'),
                     ],
                   ),
@@ -134,13 +139,18 @@ class AchievementsScreen extends StatelessWidget {
                           color: colors.onSecondaryContainer,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
-                  _xpRow('🥾 Suggest a trail', '+${RankingManager.xpTrailSubmitted} XP'),
-                  _xpRow('✅ Trail approved', '+${RankingManager.xpTrailApproved} XP'),
+                  _xpRow('🥾 Suggest a trail',
+                      '+${RankingManager.xpTrailSubmitted} XP'),
+                  _xpRow('✅ Trail approved',
+                      '+${RankingManager.xpTrailApproved} XP'),
                   _xpRow('📝 Post a review', '+${RankingManager.xpReview} XP'),
-                  _xpRow('📸 Share a photo', '+${RankingManager.xpCommunityPhoto} XP'),
+                  _xpRow('📸 Share a photo',
+                      '+${RankingManager.xpCommunityPhoto} XP'),
                   _xpRow('📅 Host a hike', '+${RankingManager.xpHostHike} XP'),
-                  _xpRow('🥾 Complete easy hike', '+${RankingManager.xpEasyHike} XP'),
-                  _xpRow('🔥 Complete standard hike', '+${RankingManager.xpStandardHike} XP'),
+                  _xpRow('🥾 Complete easy hike',
+                      '+${RankingManager.xpEasyHike} XP'),
+                  _xpRow('🔥 Complete standard hike',
+                      '+${RankingManager.xpStandardHike} XP'),
                 ],
               ),
             ),
@@ -151,7 +161,8 @@ class AchievementsScreen extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           for (final m in _milestones)
-            _milestoneRow(context, m, userXP >= m.xpRequired, levelNum == m.level),
+            _milestoneRow(context, m, userXP >= m.xpRequired,
+                levelNum == m.level),
           const SizedBox(height: 24),
         ],
       ),
@@ -183,13 +194,16 @@ class AchievementsScreen extends StatelessWidget {
     );
   }
 
-  Widget _milestoneRow(BuildContext context, _Milestone m, bool unlocked, bool isCurrent) {
+  Widget _milestoneRow(
+      BuildContext context, _Milestone m, bool unlocked, bool isCurrent) {
     final colors = Theme.of(context).colorScheme;
     return Card(
       elevation: isCurrent ? 4 : 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: isCurrent ? BorderSide(color: colors.primary, width: 2) : BorderSide.none,
+        side: isCurrent
+            ? BorderSide(color: colors.primary, width: 2)
+            : BorderSide.none,
       ),
       color: isCurrent
           ? colors.primaryContainer
@@ -221,7 +235,8 @@ class AchievementsScreen extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                   ]),
                   Text('🎯 Reward: ${m.reward}',
-                      style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12)),
+                      style: TextStyle(
+                          color: colors.onSurfaceVariant, fontSize: 12)),
                   Text(
                     unlocked
                         ? '✨ Unlocked at ${m.xpRequired} XP'

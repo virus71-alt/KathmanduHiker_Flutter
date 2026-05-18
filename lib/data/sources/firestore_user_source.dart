@@ -20,6 +20,12 @@ class FirestoreUserSource {
   Stream<UserProfileDto> watchProfile(String uid) =>
       _users.doc(uid).snapshots().map(UserProfileDto.fromDoc);
 
+  Stream<List<UserProfileDto>> watchLeaderboard() => _users
+      .orderBy('totalXP', descending: true)
+      .limit(50)
+      .snapshots()
+      .map((s) => s.docs.map(UserProfileDto.fromDoc).toList());
+
   Future<UserProfileDto?> getProfile(String uid) async {
     final doc = await _users.doc(uid).get();
     return doc.exists ? UserProfileDto.fromDoc(doc) : null;

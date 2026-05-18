@@ -35,6 +35,11 @@ class UserRepositoryImpl implements UserRepository {
       .map((dtos) => dtos.map((d) => d.toEntity()).toList());
 
   @override
+  Stream<List<UserProfile>> watchLeaderboard() => _users
+      .watchLeaderboard()
+      .map((dtos) => dtos.map((d) => d.toEntity()).toList());
+
+  @override
   Future<Either<Failure, UserProfile>> getProfile(String uid) async {
     try {
       final dto = await _users.getProfile(uid);

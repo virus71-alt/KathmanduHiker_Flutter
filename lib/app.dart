@@ -14,6 +14,7 @@ import 'screens/admin_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/force_update_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/leaderboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
@@ -113,14 +114,16 @@ class RootShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Wire analytics user once on login / uid change.
-    ref.listen<String>(currentUidProvider, (_, uid) {
-      AppLog.setUser(uid);
-      Analytics.setUser(uid);
-    }, fireImmediately: true);
-
     // ─── Provider reads ───────────────────────────────────────────────────
     final uid              = ref.watch(currentUidProvider);
+
+    // Wire analytics user on login / uid change.
+    ref.listen<String>(currentUidProvider, (_, newUid) {
+      AppLog.setUser(newUid);
+      Analytics.setUser(newUid);
+    });
+    AppLog.setUser(uid);
+    Analytics.setUser(uid);
     final profile          = ref.watch(userProfileProvider).valueOrNull;
     final trails           = ref.watch(approvedTrailsProvider).valueOrNull ?? [];
     final mySubmissions    = ref.watch(mySubmissionsProvider).valueOrNull ?? [];
@@ -305,7 +308,8 @@ class RootShell extends ConsumerWidget {
     // ─── Tab body ─────────────────────────────────────────────────────────
     final showBottomBar = currentTab != 'AddTrail' &&
         currentTab != 'Notifications' &&
-        currentTab != 'Achievements';
+        currentTab != 'Achievements' &&
+        currentTab != 'Leaderboard';
 
     final Widget body = switch (currentTab) {
       'Home' || 'Favorites' => HomeScreen(
@@ -321,15 +325,7 @@ class RootShell extends ConsumerWidget {
           onAddClick: () => setTab('AddTrail'),
           onNotificationClick: () => setTab('Notifications'),
         ),
-      'Notifications' => NotificationsScreen(
-          notifications: notifications,
-          onBack: () => setTab('Home'),
-          onMarkAsRead: (id) => ref.read(userRepositoryProvider).markNotificationRead(
-            uid: uid,
-            notificationId: id,
-          ),
-          onClearAll: () => ref.read(userRepositoryProvider).clearAllNotifications(uid),
-        ),
+      'Notifications' => NotificationsScreen(onBack: () => setTab('Home')),
       'AddTrail' => AddTrailScreen(
           onSuccess: () => setTab('Home'),
           onBack: () => setTab('Home'),
@@ -369,15 +365,13 @@ class RootShell extends ConsumerWidget {
           onLogout: () => FirebaseAuth.instance.signOut(),
           onAdminClick: () => setTab('Admin'),
           onAchievementsClick: () => setTab('Achievements'),
+          onLeaderboardClick: () => setTab('Leaderboard'),
           onUpdateProfile: updateProfile,
           onDeletePending: (id) => ref.read(trailRepositoryProvider).deleteTrail(id),
           onDeleteAccount: deleteAccount,
         ),
-      'Achievements' => AchievementsScreen(
-          userXP: profile?.totalXP ?? 0,
-          approvedSubmissions: mySubmissions.where((t) => t.isApproved).length,
-          onBack: () => setTab('Profile'),
-        ),
+      'Achievements' => AchievementsScreen(onBack: () => setTab('Profile')),
+      'Leaderboard' => LeaderboardScreen(onBack: () => setTab('Profile')),
       'Admin' when isAdmin => AdminScreen(
           pendingHikes: {
             for (final t in [...pendingTrails, ...trails]) t.id: t,
@@ -396,7 +390,9 @@ class RootShell extends ConsumerWidget {
       canPop: isOnHome,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setTab(currentTab == 'Achievements' ? 'Profile' : 'Home');
+        setTab(currentTab == 'Achievements' || currentTab == 'Leaderboard'
+            ? 'Profile'
+            : 'Home');
       },
       child: Scaffold(
         body: Column(

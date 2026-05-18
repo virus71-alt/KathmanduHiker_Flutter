@@ -11,6 +11,7 @@ abstract class UserRepository {
   // Streams — errors surface through Riverpod's error state.
   Stream<UserProfile> watchProfile(String uid);
   Stream<List<AppNotification>> watchNotifications(String uid);
+  Stream<List<UserProfile>> watchLeaderboard();
 
   Future<Either<Failure, UserProfile>> getProfile(String uid);
   Future<Either<Failure, List<PublicProfile>>> searchUsers(

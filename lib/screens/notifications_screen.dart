@@ -1,26 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../models/app_notification.dart';
+import '../state/current_uid_provider.dart';
+import '../state/notifications_provider.dart';
+import '../state/repositories.dart';
 import '../utils/feedback.dart';
 
-class NotificationsScreen extends StatelessWidget {
-  final List<AppNotification> notifications;
+class NotificationsScreen extends ConsumerWidget {
   final VoidCallback onBack;
-  final Future<void> Function(String id) onMarkAsRead;
-  final Future<void> Function() onClearAll;
-
-  const NotificationsScreen({
-    super.key,
-    required this.notifications,
-    required this.onBack,
-    required this.onMarkAsRead,
-    required this.onClearAll,
-  });
+  const NotificationsScreen({super.key, required this.onBack});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
+    final uid = ref.watch(currentUidProvider);
+    final notifications = ref.watch(notificationsProvider).valueOrNull ?? [];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('🔔 Notifications'),
@@ -36,7 +32,7 @@ class NotificationsScreen extends StatelessWidget {
             TextButton(
               onPressed: () {
                 AppFeedback.warning();
-                onClearAll();
+                ref.read(userRepositoryProvider).clearAllNotifications(uid);
               },
               child: Text('Clear all',
                   style: TextStyle(color: colors.onPrimary)),
@@ -66,19 +62,27 @@ class NotificationsScreen extends StatelessWidget {
                       ? null
                       : colors.primaryContainer.withOpacity(0.3),
                   leading: Icon(
-                    n.isRead ? Icons.mark_email_read : Icons.mark_email_unread,
-                    color: n.isRead ? colors.onSurfaceVariant : colors.primary,
+                    n.isRead
+                        ? Icons.mark_email_read
+                        : Icons.mark_email_unread,
+                    color: n.isRead
+                        ? colors.onSurfaceVariant
+                        : colors.primary,
                   ),
                   title: Text(n.message,
                       style: TextStyle(
-                          fontWeight:
-                              n.isRead ? FontWeight.normal : FontWeight.bold)),
+                          fontWeight: n.isRead
+                              ? FontWeight.normal
+                              : FontWeight.bold)),
                   subtitle: Text(DateFormat('MMM d, HH:mm').format(
                       DateTime.fromMillisecondsSinceEpoch(n.timestamp))),
                   onTap: () {
                     if (!n.isRead) {
                       AppFeedback.tap();
-                      onMarkAsRead(n.id);
+                      ref.read(userRepositoryProvider).markNotificationRead(
+                            uid: uid,
+                            notificationId: n.id,
+                          );
                     }
                   },
                 );

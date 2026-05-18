@@ -1,13 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../state/leaderboard_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/ranking_manager.dart';
 
-class PublicProfileScreen extends StatelessWidget {
+class PublicProfileScreen extends ConsumerWidget {
   final String userId;
   final VoidCallback onBack;
   final VoidCallback onRemoveFriend;
@@ -20,8 +21,10 @@ class PublicProfileScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
+    final profileAsync = ref.watch(publicUserProfileProvider(userId));
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('👤 Profile'),
@@ -33,25 +36,11 @@ class PublicProfileScreen extends StatelessWidget {
           },
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
-        builder: (_, snap) {
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final doc = snap.requireData;
-          if (!doc.exists) {
-            return const Center(child: Text('User not found.'));
-          }
-          final d = doc.data() ?? <String, dynamic>{};
-          final name = (d['displayName'] ?? 'Hiker') as String;
-          final bio = (d['bio'] ?? '') as String;
-          final location = (d['location'] ?? '') as String;
-          final phone = (d['phone'] ?? '') as String;
-          final showPhone = (d['showPhone'] ?? false) as bool;
-          final insta = (d['insta'] ?? '') as String;
-          final pic = (d['profilePic'] ?? '') as String;
-          final xp = ((d['totalXP'] ?? 0) as num).toInt();
-          final label = RankingManager.getLevelLabel(xp);
-
+      body: profileAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => const Center(child: Text('User not found.')),
+        data: (profile) {
+          final label = RankingManager.getLevelLabel(profile.totalXP);
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -61,25 +50,30 @@ class PublicProfileScreen extends StatelessWidget {
                     CircleAvatar(
                       radius: 56,
                       backgroundColor: AppColors.surfaceVariant,
-                      backgroundImage: pic.isNotEmpty ? CachedNetworkImageProvider(pic) : null,
-                      child: pic.isEmpty
-                          ? Text(name[0].toUpperCase(),
+                      backgroundImage: profile.profilePic.isNotEmpty
+                          ? CachedNetworkImageProvider(profile.profilePic)
+                          : null,
+                      child: profile.profilePic.isEmpty
+                          ? Text(profile.displayName[0].toUpperCase(),
                               style: const TextStyle(
                                   fontSize: 40, fontWeight: FontWeight.bold))
                           : null,
                     ),
                     const SizedBox(height: 10),
-                    Text(name,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text(profile.displayName,
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold)),
                     Container(
                       margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: colors.primary,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text('🏅 $label',
-                          style: TextStyle(color: colors.onPrimary, fontSize: 12)),
+                          style:
+                              TextStyle(color: colors.onPrimary, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -91,16 +85,19 @@ class PublicProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (location.isNotEmpty) _row('📍', location),
-                      if (showPhone && phone.isNotEmpty)
+                      if (profile.location.isNotEmpty)
+                        _row('📍', profile.location),
+                      if (profile.showPhone && profile.phone.isNotEmpty)
                         InkWell(
-                          onTap: () => launchUrl(Uri.parse('tel:$phone')),
-                          child: _row('📞', phone),
+                          onTap: () =>
+                              launchUrl(Uri.parse('tel:${profile.phone}')),
+                          child: _row('📞', profile.phone),
                         ),
-                      if (insta.isNotEmpty) _row('📷', '@$insta'),
-                      if (bio.isNotEmpty) ...[
+                      if (profile.insta.isNotEmpty)
+                        _row('📷', '@${profile.insta}'),
+                      if (profile.bio.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(bio),
+                        Text(profile.bio),
                       ],
                     ],
                   ),
@@ -113,7 +110,8 @@ class PublicProfileScreen extends StatelessWidget {
                   onRemoveFriend();
                 },
                 icon: Icon(Icons.person_remove, color: colors.error),
-                label: Text('Remove Friend', style: TextStyle(color: colors.error)),
+                label: Text('Remove Friend',
+                    style: TextStyle(color: colors.error)),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: colors.error),
                   minimumSize: const Size.fromHeight(48),
@@ -128,6 +126,10 @@ class PublicProfileScreen extends StatelessWidget {
 
   Widget _row(String emoji, String text) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(children: [Text(emoji, style: const TextStyle(fontSize: 18)), const SizedBox(width: 10), Text(text)]),
+        child: Row(children: [
+          Text(emoji, style: const TextStyle(fontSize: 18)),
+          const SizedBox(width: 10),
+          Text(text)
+        ]),
       );
 }

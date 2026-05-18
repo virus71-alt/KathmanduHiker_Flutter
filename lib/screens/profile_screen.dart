@@ -3,7 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../models/trail.dart';
+import '../domain/entities/trail.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/ranking_manager.dart';
@@ -25,6 +25,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onAdminClick;
   final VoidCallback onAchievementsClick;
+  final VoidCallback onLeaderboardClick;
   final Future<void> Function({
     required String name,
     required String bio,
@@ -59,6 +60,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onLogout,
     required this.onAdminClick,
     required this.onAchievementsClick,
+    required this.onLeaderboardClick,
     required this.onUpdateProfile,
     required this.onDeletePending,
     required this.onDeleteAccount,
@@ -375,6 +377,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: _achievementsCard(levelLabel, progress, nextXp, levelNum, maxed),
           ),
         ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
+              AppSpacing.stackSm, AppSpacing.marginMobile, 0),
+          sliver: SliverToBoxAdapter(child: _leaderboardButton()),
+        ),
         if (_editing)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
@@ -650,6 +657,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _leaderboardButton() {
+    return OutlinedButton.icon(
+      onPressed: () {
+        AppFeedback.tap();
+        widget.onLeaderboardClick();
+      },
+      icon: const Text('🏆', style: TextStyle(fontSize: 16)),
+      label: const Text('View Leaderboard'),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
     );
   }
 
