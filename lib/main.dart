@@ -6,6 +6,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/analytics.dart';
@@ -60,7 +61,7 @@ Future<void> main() async {
 
       await bootTrace.stop();
       AppLog.i('app.boot.complete');
-      runApp(const KathmanduHikerApp());
+      runApp(const ProviderScope(child: KathmanduHikerApp()));
     },
     (error, stack) {
       // Last-resort net: zone-level errors. These are the ones the two

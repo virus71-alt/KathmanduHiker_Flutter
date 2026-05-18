@@ -5,10 +5,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/analytics.dart';
 import 'core/logger.dart';
+import 'state/auth_state_provider.dart';
 import 'models/app_notification.dart';
 import 'models/trail.dart';
 import 'screens/achievements_screen.dart';
@@ -49,14 +51,14 @@ class KathmanduHikerApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatefulWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends ConsumerState<AuthGate> {
   bool? _outdated;
   String _updateMessage = '';
 
@@ -92,17 +94,12 @@ class _AuthGateState extends State<AuthGate> {
     if (_outdated == true) {
       return ForceUpdateScreen(message: _updateMessage);
     }
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.data == null) return const LoginScreen();
-        return const RootShell();
-      },
+    return ref.watch(authStateProvider).when(
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (_, __) => const LoginScreen(),
+      data: (user) => user == null ? const LoginScreen() : const RootShell(),
     );
   }
 }
