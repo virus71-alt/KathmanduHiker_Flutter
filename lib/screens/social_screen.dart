@@ -2,51 +2,27 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/analytics.dart';
 import '../models/hike_event.dart';
 import '../models/social_user.dart';
+import '../state/current_uid_provider.dart';
+import '../state/navigation_providers.dart';
+import '../state/repositories.dart';
+import '../state/trail_providers.dart';
+import '../state/user_profile_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 
-class SocialScreen extends StatefulWidget {
-  final String currentUserId;
-  final List<String> receivedRequests;
-  final List<String> sentRequests;
-  final List<String> friends;
-  final List<String> unreadChatIds;
-  // Trail IDs that currently exist as approved trails. Used to filter out
-  // stale events whose underlying trail has been deleted.
-  final Set<String> validTrailIds;
-  final Future<void> Function(String senderId) onAccept;
-  final Future<void> Function(String senderId) onReject;
-  final Future<void> Function(String targetId) onSendFriendRequest;
-  final Future<void> Function(String targetId) onCancelFriendRequest;
-  final void Function(String id, String name) onChatClick;
-  final void Function(String id) onProfileClick;
-  final void Function(String trailId) onFeedItemClick;
-
-  const SocialScreen({
-    super.key,
-    required this.currentUserId,
-    required this.receivedRequests,
-    required this.sentRequests,
-    required this.friends,
-    required this.unreadChatIds,
-    required this.onAccept,
-    required this.onReject,
-    required this.onSendFriendRequest,
-    required this.onCancelFriendRequest,
-    required this.onChatClick,
-    required this.onProfileClick,
-    required this.onFeedItemClick,
-    this.validTrailIds = const {},
-  });
+class SocialScreen extends ConsumerStatefulWidget {
+  const SocialScreen({super.key});
 
   @override
-  State<SocialScreen> createState() => _SocialScreenState();
+  ConsumerState<SocialScreen> createState() => _SocialScreenState();
 }
 
-class _SocialScreenState extends State<SocialScreen> {
+class _SocialScreenState extends ConsumerState<SocialScreen> {
   final _db = FirebaseFirestore.instance;
   final _pageCtl = PageController();
   int _page = 0;
@@ -69,9 +45,28 @@ class _SocialScreenState extends State<SocialScreen> {
   List<SocialUser> _searchResults = [];
   bool _searching = false;
 
+  // Provider-derived values, kept current via ref.listen + initState.
+  String _uid = '';
+  String _userName = '';
+  List<String> _friends = [];
+  List<String> _sentRequests = [];
+  List<String> _receivedRequests = [];
+  List<String> _unreadChatIds = [];
+  Set<String> _validTrailIds = {};
+
   @override
   void initState() {
     super.initState();
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    _uid = ref.read(currentUidProvider);
+    _userName = profile?.displayName ?? 'Hiker';
+    _friends = profile?.friends ?? [];
+    _sentRequests = profile?.sentRequests ?? [];
+    _receivedRequests = profile?.receivedRequests ?? [];
+    _unreadChatIds = profile?.unreadChatIds ?? [];
+    _validTrailIds = ref.read(approvedTrailsProvider).valueOrNull
+            ?.map((t) => t.id).toSet() ??
+        {};
     _loadProfiles();
     _eventsSub = _db
         .collection('events')
@@ -80,12 +75,10 @@ class _SocialScreenState extends State<SocialScreen> {
         .listen((s) {
       if (!mounted) return;
       // Drop events whose trail has been deleted — keeps the Upcoming Hikes
-      // section clean when the app has no approved trails yet (stale events
-      // from earlier testing get hidden automatically). If validTrailIds
-      // hasn't been wired in by the caller, fall back to permissive mode.
+      // section clean when the app has no approved trails yet.
       setState(() => _communityEvents = s.docs
           .map(HikeEvent.fromDoc)
-          .where((e) => widget.validTrailIds.contains(e.trailId))
+          .where((e) => _validTrailIds.contains(e.trailId))
           .toList());
     });
     // Community feed: pulls the global `activities` stream that records when
@@ -112,22 +105,6 @@ class _SocialScreenState extends State<SocialScreen> {
             );
           }).toList());
     }, onError: (_) {});
-  }
-
-  @override
-  void didUpdateWidget(covariant SocialScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.friends != widget.friends ||
-        oldWidget.receivedRequests != widget.receivedRequests) {
-      _loadProfiles();
-    }
-    if (oldWidget.validTrailIds != widget.validTrailIds) {
-      // Re-apply the trail-validity filter so stale events disappear the
-      // moment the underlying trail list changes.
-      setState(() => _communityEvents = _communityEvents
-          .where((e) => widget.validTrailIds.contains(e.trailId))
-          .toList());
-    }
   }
 
   Future<void> _loadProfiles() async {
@@ -163,8 +140,8 @@ class _SocialScreenState extends State<SocialScreen> {
     }
 
     final pair = await Future.wait([
-      fetch(widget.friends),
-      fetch(widget.receivedRequests),
+      fetch(_friends),
+      fetch(_receivedRequests),
     ]);
     if (!mounted) return;
     setState(() {
@@ -189,7 +166,7 @@ class _SocialScreenState extends State<SocialScreen> {
       }
       await _db
           .collection('users')
-          .doc(widget.currentUserId)
+          .doc(_uid)
           .update(updates);
     } catch (_) {
       // Non-fatal — the next load will retry.
@@ -242,7 +219,7 @@ class _SocialScreenState extends State<SocialScreen> {
       final results = snap.docs
           .map(SocialUser.fromDoc)
           .where((u) =>
-              u.id != widget.currentUserId &&
+              u.id != _uid &&
               u.name.toLowerCase().contains(lower))
           .toList();
       if (!mounted) return;
@@ -262,7 +239,13 @@ class _SocialScreenState extends State<SocialScreen> {
   Future<void> _sendFriendRequest(SocialUser u) async {
     AppFeedback.success();
     try {
-      await widget.onSendFriendRequest(u.id);
+      await ref.read(userRepositoryProvider).sendFriendRequest(
+            fromUid: _uid, toUid: u.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend Request Sent! ⏳')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -275,7 +258,13 @@ class _SocialScreenState extends State<SocialScreen> {
   Future<void> _cancelFriendRequest(SocialUser u) async {
     AppFeedback.warning();
     try {
-      await widget.onCancelFriendRequest(u.id);
+      await ref.read(userRepositoryProvider).cancelFriendRequest(
+            fromUid: _uid, toUid: u.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend Request Cancelled ❌')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -285,8 +274,40 @@ class _SocialScreenState extends State<SocialScreen> {
     }
   }
 
+  Future<void> _onFeedItemClick(String trailId) async {
+    final result = await ref.read(trailRepositoryProvider).getTrail(trailId);
+    result.fold((_) {}, (trail) {
+      Analytics.trailView(trail.id);
+      ref.read(currentTrailProvider.notifier).state = trail;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(userProfileProvider, (prev, next) {
+      final oldP = prev?.valueOrNull;
+      final newP = next.valueOrNull;
+      setState(() {
+        _friends = newP?.friends ?? [];
+        _sentRequests = newP?.sentRequests ?? [];
+        _receivedRequests = newP?.receivedRequests ?? [];
+        _unreadChatIds = newP?.unreadChatIds ?? [];
+        _userName = newP?.displayName ?? 'Hiker';
+      });
+      if (oldP?.friends != newP?.friends ||
+          oldP?.receivedRequests != newP?.receivedRequests) {
+        _loadProfiles();
+      }
+    });
+    ref.listen(approvedTrailsProvider, (_, next) {
+      final newIds = next.valueOrNull?.map((t) => t.id).toSet() ?? {};
+      setState(() {
+        _validTrailIds = newIds;
+        _communityEvents = _communityEvents
+            .where((e) => _validTrailIds.contains(e.trailId))
+            .toList();
+      });
+    });
     return Column(
       children: [
         _header(),
@@ -360,7 +381,7 @@ class _SocialScreenState extends State<SocialScreen> {
     final scheme = Theme.of(context).colorScheme;
     final counts = <int>[
       _activities.length,
-      widget.unreadChatIds.length,
+      _unreadChatIds.length,
       _requestProfiles.length,
     ];
     return Padding(
@@ -626,7 +647,7 @@ class _SocialScreenState extends State<SocialScreen> {
       borderRadius: BorderRadius.circular(AppRadius.md),
       onTap: () {
         AppFeedback.tap();
-        widget.onFeedItemClick(e.trailId);
+        _onFeedItemClick(e.trailId);
       },
       child: Container(
         width: 280,
@@ -737,7 +758,7 @@ class _SocialScreenState extends State<SocialScreen> {
           borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: () {
             AppFeedback.tap();
-            if (a.targetId.isNotEmpty) widget.onFeedItemClick(a.targetId);
+            if (a.targetId.isNotEmpty) _onFeedItemClick(a.targetId);
           },
           child: Container(
             padding: const EdgeInsets.all(14),
@@ -751,7 +772,7 @@ class _SocialScreenState extends State<SocialScreen> {
                   customBorder: const CircleBorder(),
                   onTap: a.userId.isEmpty
                       ? null
-                      : () => widget.onProfileClick(a.userId),
+                      : () => ref.read(viewingProfileProvider.notifier).state = a.userId,
                   child: _avatar(a.userPic, a.userName, size: 44),
                 ),
                 const SizedBox(width: 12),
@@ -815,10 +836,10 @@ class _SocialScreenState extends State<SocialScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, i) {
         final f = _friendProfiles[i];
-        final chatId = widget.currentUserId.compareTo(f.id) < 0
-            ? '${widget.currentUserId}_${f.id}'
-            : '${f.id}_${widget.currentUserId}';
-        final unread = widget.unreadChatIds.contains(chatId);
+        final chatId = _uid.compareTo(f.id) < 0
+            ? '${_uid}_${f.id}'
+            : '${f.id}_${_uid}';
+        final unread = _unreadChatIds.contains(chatId);
         return Material(
           color: scheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -826,7 +847,7 @@ class _SocialScreenState extends State<SocialScreen> {
             borderRadius: BorderRadius.circular(AppRadius.md),
             onTap: () {
               AppFeedback.tap();
-              widget.onChatClick(f.id, f.name);
+              ref.read(currentChatProvider.notifier).state = (id: f.id, name: f.name);
             },
             child: Container(
               decoration: BoxDecoration(
@@ -1005,10 +1026,10 @@ class _SocialScreenState extends State<SocialScreen> {
 
   Widget _searchResultTile(SocialUser u) {
     final scheme = Theme.of(context).colorScheme;
-    final isAlreadyFriend = widget.friends.contains(u.id);
-    final hasSent = widget.sentRequests.contains(u.id);
+    final isAlreadyFriend = _friends.contains(u.id);
+    final hasSent = _sentRequests.contains(u.id);
     // The other side may have sent us a request first — if so, show Accept.
-    final theySentToMe = widget.receivedRequests.contains(u.id);
+    final theySentToMe = _receivedRequests.contains(u.id);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -1022,7 +1043,7 @@ class _SocialScreenState extends State<SocialScreen> {
           children: [
             InkWell(
               customBorder: const CircleBorder(),
-              onTap: () => widget.onProfileClick(u.id),
+              onTap: () => ref.read(viewingProfileProvider.notifier).state = u.id,
               child: _avatar(u.profilePic, u.name, size: 44),
             ),
             const SizedBox(width: 12),
@@ -1079,7 +1100,7 @@ class _SocialScreenState extends State<SocialScreen> {
       // Inverse path — they already requested us. Surface Accept directly
       // from the search result so the user doesn't have to scroll.
       return FilledButton.icon(
-        onPressed: () => widget.onAccept(user.id),
+        onPressed: () => ref.read(userRepositoryProvider).acceptFriendRequest(uid: _uid, displayName: _userName, senderUid: user.id),
         icon: const Icon(Icons.check_rounded, size: 16),
         label: const Text('Accept'),
         style: FilledButton.styleFrom(
@@ -1132,7 +1153,7 @@ class _SocialScreenState extends State<SocialScreen> {
             children: [
               InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => widget.onProfileClick(r.id),
+                onTap: () => ref.read(viewingProfileProvider.notifier).state = r.id,
                 child: _avatar(r.profilePic, r.name, size: 52),
               ),
               const SizedBox(width: 12),
@@ -1162,7 +1183,7 @@ class _SocialScreenState extends State<SocialScreen> {
                 child: FilledButton.icon(
                   onPressed: () {
                     AppFeedback.success();
-                    widget.onAccept(r.id);
+                    ref.read(userRepositoryProvider).acceptFriendRequest(uid: _uid, displayName: _userName, senderUid: r.id);
                   },
                   icon: const Icon(Icons.check_rounded, size: 18),
                   label: const Text('Accept'),
@@ -1181,7 +1202,7 @@ class _SocialScreenState extends State<SocialScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () {
                     AppFeedback.warning();
-                    widget.onReject(r.id);
+                    ref.read(userRepositoryProvider).rejectFriendRequest(uid: _uid, senderUid: r.id);
                   },
                   icon: const Icon(Icons.close_rounded, size: 18),
                   label: const Text('Decline'),

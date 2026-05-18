@@ -6,45 +6,29 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../models/trail.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/analytics.dart';
+import '../domain/entities/trail.dart';
 import '../models/weather_response.dart';
 import '../services/weather_service.dart';
+import '../state/current_uid_provider.dart';
+import '../state/navigation_providers.dart';
+import '../state/notifications_provider.dart';
+import '../state/repositories.dart';
+import '../state/trail_providers.dart';
+import '../state/user_profile_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 
-class HomeScreen extends StatefulWidget {
-  final List<Trail> hikes;
-  final Set<String> favoriteIds;
-  final bool showOnlyFavorites;
-  final int unreadNotificationCount;
-  final String userName;
-  final String userProfilePic;
-  final bool isLoading;
-  final Future<void> Function(String trailId) onToggleFavorite;
-  final void Function(Trail) onTrailClick;
-  final VoidCallback onAddClick;
-  final VoidCallback onNotificationClick;
-
-  const HomeScreen({
-    super.key,
-    required this.hikes,
-    required this.favoriteIds,
-    required this.showOnlyFavorites,
-    required this.unreadNotificationCount,
-    required this.userName,
-    required this.isLoading,
-    required this.onToggleFavorite,
-    required this.onTrailClick,
-    required this.onAddClick,
-    required this.onNotificationClick,
-    this.userProfilePic = '',
-  });
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isMapView = false;
   Trail? _selectedMapTrail;
   String _searchQuery = '';
@@ -52,6 +36,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showSos = false;
   bool _sirenPlaying = false;
   WeatherResponse? _ribbonWeather;
+
+  // Provider-derived values, refreshed at the top of each build() call.
+  List<Trail> _hikes = [];
+  Set<String> _favoriteIds = {};
+  bool _showOnlyFavorites = false;
+  int _unreadCount = 0;
+  String _userName = '';
+  String _userProfilePic = '';
+  bool _isProviderLoading = false;
+  String _uid = '';
 
   @override
   void initState() {
@@ -70,8 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Trail> get _filteredHikes {
-    return widget.hikes.where((t) {
-      if (widget.showOnlyFavorites && !widget.favoriteIds.contains(t.id)) {
+    return _hikes.where((t) {
+      if (_showOnlyFavorites && !_favoriteIds.contains(t.id)) {
         return false;
       }
       if (_searchQuery.isNotEmpty) {
@@ -122,6 +116,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = ref.watch(userProfileProvider).valueOrNull;
+    final trailsAsync = ref.watch(approvedTrailsProvider);
+    final notifications = ref.watch(notificationsProvider).valueOrNull ?? [];
+    final currentTab = ref.watch(selectedTabProvider);
+
+    _hikes = trailsAsync.valueOrNull ?? [];
+    _favoriteIds = profile?.favoriteTrailIds ?? {};
+    _showOnlyFavorites = currentTab == 'Favorites';
+    _unreadCount = notifications.where((n) => !n.isRead).length;
+    _userName = profile?.displayName ?? 'Hiker';
+    _userProfilePic = profile?.profilePic ?? '';
+    _isProviderLoading = trailsAsync.isLoading;
+    _uid = ref.read(currentUidProvider);
+
     return Stack(
       children: [
         Column(
@@ -130,14 +138,14 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(child: _buildBody()),
           ],
         ),
-        if (!widget.showOnlyFavorites && !_isMapView)
+        if (!_showOnlyFavorites && !_isMapView)
           Positioned(
             right: 20,
             bottom: 20,
             child: FloatingActionButton.extended(
               onPressed: () {
                 AppFeedback.tap();
-                widget.onAddClick();
+                ref.read(selectedTabProvider.notifier).state = 'AddTrail';
               },
               icon: const Icon(Icons.add_rounded),
               label: const Text('Add Trail'),
@@ -186,9 +194,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  widget.userName.isEmpty
+                  _userName.isEmpty
                       ? 'Hiker'
-                      : widget.userName.split(' ').first,
+                      : _userName.split(' ').first,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -204,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          if (!widget.showOnlyFavorites)
+          if (!_showOnlyFavorites)
             _chromeIconButton(
               icon: _isMapView ? Icons.list_alt_rounded : Icons.map_outlined,
               tint: scheme.primary,
@@ -216,10 +224,10 @@ class _HomeScreenState extends State<HomeScreen> {
           _chromeIconButton(
             icon: Icons.notifications_none_rounded,
             tint: scheme.primary,
-            badge: widget.unreadNotificationCount,
+            badge: _unreadCount,
             onTap: () {
               AppFeedback.tap();
-              widget.onNotificationClick();
+              ref.read(selectedTabProvider.notifier).state = 'Notifications';
             },
           ),
           _chromeIconButton(
@@ -239,10 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // to the user's initial on a primary-tinted disc when no pic URL is set
   // (or while it's loading / errored).
   Widget _userAvatar(ColorScheme scheme) {
-    final pic = widget.userProfilePic;
-    final initial = widget.userName.trim().isEmpty
+    final pic = _userProfilePic;
+    final initial = _userName.trim().isEmpty
         ? 'H'
-        : widget.userName.trim()[0].toUpperCase();
+        : _userName.trim()[0].toUpperCase();
     final fallback = Container(
       width: 38,
       height: 38,
@@ -311,10 +319,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBody() {
     final scheme = Theme.of(context).colorScheme;
-    if (widget.isLoading) {
+    if (_isProviderLoading) {
       return Center(child: CircularProgressIndicator(color: scheme.primary));
     }
-    if (_isMapView && !widget.showOnlyFavorites) {
+    if (_isMapView && !_showOnlyFavorites) {
       return _buildMapView(_filteredHikes);
     }
 
@@ -340,7 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(AppSpacing.marginMobile,
               AppSpacing.stackMd, AppSpacing.marginMobile, 0),
           sliver: SliverToBoxAdapter(
-            child: _sectionHeader(widget.showOnlyFavorites
+            child: _sectionHeader(_showOnlyFavorites
                 ? 'Your Saved Trails'
                 : _selectedDifficulty == 'All'
                     ? 'Explore Hikes'
@@ -589,7 +597,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // hairline dividers. Mirrors the HTML reference.
   Widget _trailCard(Trail trail) {
     final scheme = Theme.of(context).colorScheme;
-    final isFav = widget.favoriteIds.contains(trail.id);
+    final isFav = _favoriteIds.contains(trail.id);
     final rating = trail.ratingScore > 0
         ? trail.ratingScore
         : trail.userRating.toDouble();
@@ -607,7 +615,8 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(AppRadius.lg),
         onTap: () {
           AppFeedback.tap();
-          widget.onTrailClick(trail);
+          Analytics.trailView(trail.id);
+          ref.read(currentTrailProvider.notifier).state = trail;
         },
         child: Container(
           decoration: BoxDecoration(
@@ -697,7 +706,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         customBorder: const CircleBorder(),
                         onTap: () {
                           AppFeedback.toggle();
-                          widget.onToggleFavorite(trail.id);
+                          ref.read(userRepositoryProvider).toggleFavorite(
+                            uid: _uid, trailId: trail.id,
+                            add: !_favoriteIds.contains(trail.id),
+                          );
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(7),
@@ -833,7 +845,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               _searchQuery.isNotEmpty || _selectedDifficulty != 'All'
                   ? 'No trails match your search.'
-                  : widget.showOnlyFavorites
+                  : _showOnlyFavorites
                       ? 'No saved trails yet.\nStart exploring!'
                       : 'No trails found.',
               textAlign: TextAlign.center,
@@ -889,7 +901,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 onTap: () {
                   AppFeedback.tap();
-                  widget.onTrailClick(selected);
+                  Analytics.trailView(selected.id);
+                  ref.read(currentTrailProvider.notifier).state = selected;
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(12),

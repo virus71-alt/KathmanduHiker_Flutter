@@ -7,7 +7,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/analytics.dart';
 import 'core/logger.dart';
-import 'domain/entities/trail.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/add_trail_screen.dart';
 import 'screens/admin_screen.dart';
@@ -25,7 +24,6 @@ import 'services/remote_config_service.dart';
 import 'state/auth_state_provider.dart';
 import 'state/current_uid_provider.dart';
 import 'state/navigation_providers.dart';
-import 'state/notifications_provider.dart';
 import 'state/repositories.dart';
 import 'state/trail_providers.dart';
 import 'state/user_profile_provider.dart';
@@ -128,8 +126,6 @@ class RootShell extends ConsumerWidget {
     final trails           = ref.watch(approvedTrailsProvider).valueOrNull ?? [];
     final mySubmissions    = ref.watch(mySubmissionsProvider).valueOrNull ?? [];
     final pendingTrails    = ref.watch(pendingTrailsProvider).valueOrNull ?? [];
-    final notifications    = ref.watch(notificationsProvider).valueOrNull ?? [];
-    final isLoading        = ref.watch(approvedTrailsProvider).isLoading;
     final currentTab       = ref.watch(selectedTabProvider);
     final currentTrail     = ref.watch(currentTrailProvider);
     final currentChat      = ref.watch(currentChatProvider);
@@ -147,17 +143,6 @@ class RootShell extends ConsumerWidget {
     // ─── Navigation helpers ───────────────────────────────────────────────
     void setTab(String tab) =>
         ref.read(selectedTabProvider.notifier).state = tab;
-
-    void openTrail(Trail t) {
-      Analytics.trailView(t.id);
-      ref.read(currentTrailProvider.notifier).state = t;
-    }
-
-    void openChat(String id, String name) =>
-        ref.read(currentChatProvider.notifier).state = (id: id, name: name);
-
-    void openProfile(String id) =>
-        ref.read(viewingProfileProvider.notifier).state = id;
 
     void toast(String msg) =>
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -194,21 +179,6 @@ class RootShell extends ConsumerWidget {
           .cancelFriendRequest(fromUid: uid, toUid: targetId);
       toast('Friend Request Cancelled ❌');
     }
-
-    Future<void> acceptRequest(String senderId) async {
-      await ref.read(userRepositoryProvider).acceptFriendRequest(
-        uid: uid,
-        displayName: userName,
-        senderUid: senderId,
-      );
-      toast('Friend Request Accepted! 🎉');
-    }
-
-    Future<void> rejectRequest(String senderId) =>
-        ref.read(userRepositoryProvider).rejectFriendRequest(
-          uid: uid,
-          senderUid: senderId,
-        );
 
     Future<void> removeFriend(String friendId) =>
         ref.read(userRepositoryProvider).removeFriend(
@@ -312,42 +282,13 @@ class RootShell extends ConsumerWidget {
         currentTab != 'Leaderboard';
 
     final Widget body = switch (currentTab) {
-      'Home' || 'Favorites' => HomeScreen(
-          hikes: trails,
-          favoriteIds: favoriteIds,
-          showOnlyFavorites: currentTab == 'Favorites',
-          unreadNotificationCount: notifications.where((n) => !n.isRead).length,
-          userName: userName,
-          userProfilePic: userProfilePic,
-          isLoading: isLoading,
-          onToggleFavorite: toggleFavorite,
-          onTrailClick: openTrail,
-          onAddClick: () => setTab('AddTrail'),
-          onNotificationClick: () => setTab('Notifications'),
-        ),
+      'Home' || 'Favorites' => const HomeScreen(),
       'Notifications' => NotificationsScreen(onBack: () => setTab('Home')),
       'AddTrail' => AddTrailScreen(
           onSuccess: () => setTab('Home'),
           onBack: () => setTab('Home'),
         ),
-      'Social' => SocialScreen(
-          currentUserId: uid,
-          receivedRequests: myReceivedRequests,
-          sentRequests: mySentRequests,
-          friends: myFriends,
-          unreadChatIds: myUnreadChatIds,
-          validTrailIds: {for (final t in trails) t.id},
-          onAccept: acceptRequest,
-          onReject: rejectRequest,
-          onSendFriendRequest: sendFriendRequest,
-          onCancelFriendRequest: cancelFriendRequest,
-          onChatClick: openChat,
-          onProfileClick: openProfile,
-          onFeedItemClick: (trailId) async {
-            final result = await ref.read(trailRepositoryProvider).getTrail(trailId);
-            result.fold((_) {}, openTrail);
-          },
-        ),
+      'Social' => const SocialScreen(),
       'Profile' => ProfileScreen(
           userSubmissions: mySubmissions,
           isAdmin: isAdmin,
