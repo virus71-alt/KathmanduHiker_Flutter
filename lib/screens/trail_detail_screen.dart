@@ -26,44 +26,33 @@ import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/image_utils.dart';
 import '../utils/ranking_manager.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../state/current_uid_provider.dart';
+import '../state/navigation_providers.dart';
+import '../state/repositories.dart';
+import '../state/user_profile_provider.dart';
 import 'create_event_bottom_sheet.dart';
 
-class TrailDetailScreen extends StatefulWidget {
-  final Trail trail;
-  final String currentUserId;
-  final String currentUserName;
-  final String currentUserPic;
-  final List<String> myFriends;
-  final List<String> mySentRequests;
-  final bool isFavorite;
-  final VoidCallback onBack;
-  final Future<void> Function(String authorId) onSendFriendRequest;
-  final Future<void> Function(String authorId) onCancelFriendRequest;
-  final Future<void> Function()? onToggleFavorite;
-
-  const TrailDetailScreen({
-    super.key,
-    required this.trail,
-    required this.currentUserId,
-    required this.currentUserName,
-    required this.currentUserPic,
-    required this.myFriends,
-    required this.mySentRequests,
-    required this.onBack,
-    required this.onSendFriendRequest,
-    required this.onCancelFriendRequest,
-    this.isFavorite = false,
-    this.onToggleFavorite,
-  });
+class TrailDetailScreen extends ConsumerStatefulWidget {
+  const TrailDetailScreen({super.key});
 
   @override
-  State<TrailDetailScreen> createState() => _TrailDetailScreenState();
+  ConsumerState<TrailDetailScreen> createState() => _TrailDetailScreenState();
 }
 
-class _TrailDetailScreenState extends State<TrailDetailScreen> {
+class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
   final _picker = ImagePicker();
+
+  // Provider-derived values seeded in initState via ref.read.
+  late Trail _trail;
+  String _uid = '';
+  String _userName = '';
+  String _userPic = '';
+  List<String> _myFriends = [];
+  List<String> _mySentRequests = [];
 
   // Live data
   List<TrailReview> _reviews = [];
@@ -91,13 +80,20 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   final _imageCtl = PageController();
   int _imagePage = 0;
 
-  List<String> get _images => widget.trail.imageUrls.isNotEmpty
-      ? widget.trail.imageUrls
+  List<String> get _images => _trail.imageUrls.isNotEmpty
+      ? _trail.imageUrls
       : const ['https://images.unsplash.com/photo-1464822759023-fed622ff2c3b'];
 
   @override
   void initState() {
     super.initState();
+    _trail = ref.read(currentTrailProvider)!;
+    _uid = ref.read(currentUidProvider);
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    _userName = profile?.displayName ?? 'Hiker';
+    _userPic = profile?.profilePic ?? '';
+    _myFriends = profile?.friends ?? [];
+    _mySentRequests = profile?.sentRequests ?? [];
     _wireFirestore();
     _wireTracking();
     _loadWeather();
@@ -107,8 +103,8 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     _subs.add(
       _db
           .collection('hikes')
-          .where('trailId', isEqualTo: widget.trail.id)
-          .where('userId', isEqualTo: widget.currentUserId)
+          .where('trailId', isEqualTo: _trail.id)
+          .where('userId', isEqualTo: _uid)
           .orderBy('timestamp', descending: true)
           .limit(1)
           .snapshots()
@@ -125,7 +121,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     _subs.add(
       _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('reviews')
           .orderBy('timestamp', descending: true)
           .snapshots()
@@ -138,7 +134,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     _subs.add(
       _db
           .collection('events')
-          .where('trailId', isEqualTo: widget.trail.id)
+          .where('trailId', isEqualTo: _trail.id)
           .snapshots()
           .listen((s) {
         if (!mounted) return;
@@ -149,7 +145,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     _subs.add(
       _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('gallery')
           .orderBy('timestamp', descending: true)
           .snapshots()
@@ -171,7 +167,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   }
 
   Future<void> _loadWeather() async {
-    final w = await WeatherService.getWeather(widget.trail.name);
+    final w = await WeatherService.getWeather(_trail.name);
     if (mounted) setState(() => _weather = w);
   }
 
@@ -204,14 +200,14 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       if (!go) return;
     }
 
-    final ok = await HikeTrackingService.instance.start(widget.trail.id);
+    final ok = await HikeTrackingService.instance.start(_trail.id);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enable location to track your hike.')),
       );
       return;
     }
-    Analytics.hikeStarted(widget.trail.id);
+    Analytics.hikeStarted(_trail.id);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Hike tracking started.')),
@@ -237,23 +233,23 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     final finalDistance = await HikeTrackingService.instance.stop();
     setState(() => _finishedDistance = finalDistance);
     final km = finalDistance / 1000.0;
-    Analytics.hikeCompleted(widget.trail.id, km);
+    Analytics.hikeCompleted(_trail.id, km);
     int xp = 0;
     String status;
     if (km >= 0.7) {
-      xp = widget.trail.difficulty.toLowerCase() == 'easy'
+      xp = _trail.difficulty.toLowerCase() == 'easy'
           ? RankingManager.xpEasyHike
           : RankingManager.xpStandardHike;
       status = 'Hike Completed!';
       await _db.collection('hikes').add({
-        'userId': widget.currentUserId,
-        'trailId': widget.trail.id,
+        'userId': _uid,
+        'trailId': _trail.id,
         'distanceKm': km,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
       await _db
           .collection('users')
-          .doc(widget.currentUserId)
+          .doc(_uid)
           .update({'totalXP': FieldValue.increment(xp)});
     } else {
       status = 'Hike too short';
@@ -280,23 +276,23 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       final bytes = await ImageUtils.compress(File(picked.path));
       final ref = _storage
           .ref()
-          .child('gallery/${widget.trail.id}/${const Uuid().v4()}.jpg');
+          .child('gallery/${_trail.id}/${const Uuid().v4()}.jpg');
       await ref.putData(bytes);
       final url = await ref.getDownloadURL();
       await _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('gallery')
           .add({
-        'userId': widget.currentUserId,
-        'userName': widget.currentUserName,
+        'userId': _uid,
+        'userName': _userName,
         'url': url,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
-      if (widget.currentUserId.isNotEmpty) {
+      if (_uid.isNotEmpty) {
         await _db
             .collection('users')
-            .doc(widget.currentUserId)
+            .doc(_uid)
             .update({
           'totalXP':
               FieldValue.increment(RankingManager.xpCommunityPhoto)
@@ -329,16 +325,16 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     }
     AppFeedback.success();
     setState(() => _submittingReview = true);
-    await _db.collection('trails').doc(widget.trail.id).collection('reviews').add({
-      'userId': widget.currentUserId,
-      'userName': widget.currentUserName,
+    await _db.collection('trails').doc(_trail.id).collection('reviews').add({
+      'userId': _uid,
+      'userName': _userName,
       'rating': _newRating,
       'comment': _reviewCtl.text.trim(),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     await _db
         .collection('users')
-        .doc(widget.currentUserId)
+        .doc(_uid)
         .update({'totalXP': FieldValue.increment(RankingManager.xpReview)});
     await _recalculateTrailRating();
     if (!mounted) return;
@@ -351,7 +347,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     try {
       final snap = await _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('reviews')
           .get();
       final reviewRatings = snap.docs
@@ -361,16 +357,16 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       // Seed = the rating the trail author gave on AddTrail. We only fold it
       // in when no reviews exist yet (so a single user-given rating still
       // shows), otherwise the community average takes over.
-      final seed = widget.trail.ratingScore > 0
-          ? widget.trail.ratingScore
-          : widget.trail.userRating.toDouble();
+      final seed = _trail.ratingScore > 0
+          ? _trail.ratingScore
+          : _trail.userRating.toDouble();
       final all = reviewRatings.isEmpty
           ? [if (seed > 0) seed]
           : reviewRatings;
       if (all.isEmpty) return;
       final avg = all.reduce((a, b) => a + b) / all.length;
       final rounded = avg.round().clamp(1, 5);
-      await _db.collection('trails').doc(widget.trail.id).update({
+      await _db.collection('trails').doc(_trail.id).update({
         'ratingScore': double.parse(avg.toStringAsFixed(2)),
         'userRating': rounded,
       });
@@ -467,7 +463,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       AppFeedback.success();
       await _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('reviews')
           .doc(r.id)
           .update({
@@ -503,7 +499,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     if (go == true) {
       await _db
           .collection('trails')
-          .doc(widget.trail.id)
+          .doc(_trail.id)
           .collection('reviews')
           .doc(r.id)
           .delete();
@@ -537,20 +533,20 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetCtx) => CreateEventBottomSheet(
-        trailName: widget.trail.name,
+        trailName: _trail.name,
         onCreate: (date, max) async {
           final eventData = {
-            'trailId': widget.trail.id,
-            'trailName': widget.trail.name,
-            'creatorId': widget.currentUserId,
-            'creatorName': widget.currentUserName,
+            'trailId': _trail.id,
+            'trailName': _trail.name,
+            'creatorId': _uid,
+            'creatorName': _userName,
             'dateText': date,
             'maxHikers': max,
-            'attendees': [widget.currentUserId],
+            'attendees': [_uid],
             'attendeeDetails': [
               {
-                'id': widget.currentUserId,
-                'name': widget.currentUserName,
+                'id': _uid,
+                'name': _userName,
                 'phone': 'Organizer',
                 'bloodGroup': 'N/A',
               },
@@ -559,24 +555,24 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           };
           final ref = await _db.collection('events').add(eventData);
           for (final friendId
-              in widget.myFriends.where((f) => f != widget.currentUserId)) {
+              in _myFriends.where((f) => f != _uid)) {
             await _db
                 .collection('users')
                 .doc(friendId)
                 .collection('notifications')
                 .add({
               'message':
-                  '${widget.currentUserName} planned a hike to ${widget.trail.name} on $date.',
+                  '${_userName} planned a hike to ${_trail.name} on $date.',
               'timestamp': DateTime.now().millisecondsSinceEpoch,
               'isRead': false,
               'type': 'community_event',
-              'trailId': widget.trail.id,
+              'trailId': _trail.id,
               'eventId': ref.id,
             });
           }
           await _db
               .collection('users')
-              .doc(widget.currentUserId)
+              .doc(_uid)
               .update({'totalXP': FieldValue.increment(RankingManager.xpHostHike)});
           if (sheetCtx.mounted) Navigator.pop(sheetCtx);
         },
@@ -586,7 +582,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   Future<void> _joinEvent(HikeEvent event) async {
     AppFeedback.tap();
-    final nameCtl = TextEditingController(text: widget.currentUserName);
+    final nameCtl = TextEditingController(text: _userName);
     final phoneCtl = TextEditingController();
     final bloodCtl = TextEditingController();
     final go = await showDialog<bool>(
@@ -615,10 +611,10 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     );
     if (go != true || phoneCtl.text.isEmpty || bloodCtl.text.isEmpty) return;
     await _db.collection('events').doc(event.id).update({
-      'attendees': FieldValue.arrayUnion([widget.currentUserId]),
+      'attendees': FieldValue.arrayUnion([_uid]),
       'attendeeDetails': FieldValue.arrayUnion([
         {
-          'id': widget.currentUserId,
+          'id': _uid,
           'name': nameCtl.text,
           'phone': phoneCtl.text,
           'bloodGroup': bloodCtl.text,
@@ -630,19 +626,50 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   Future<void> _leaveEvent(HikeEvent event) async {
     AppFeedback.warning();
     final my = event.attendeeDetails.firstWhere(
-      (d) => d['id'] == widget.currentUserId,
+      (d) => d['id'] == _uid,
       orElse: () => const {},
     );
     if (my.isEmpty) return;
     await _db.collection('events').doc(event.id).update({
-      'attendees': FieldValue.arrayRemove([widget.currentUserId]),
+      'attendees': FieldValue.arrayRemove([_uid]),
       'attendeeDetails': FieldValue.arrayRemove([my]),
     });
   }
 
+  bool get _isFavorite =>
+      ref.read(userProfileProvider).valueOrNull?.favoriteTrailIds
+          .contains(_trail.id) ??
+      false;
+
+  Future<void> _toggleFavorite() async {
+    final isFav = _isFavorite;
+    await ref.read(userRepositoryProvider).toggleFavorite(
+          uid: _uid, trailId: _trail.id, add: !isFav);
+  }
+
+  Future<void> _sendFriendRequest(String toUid) async {
+    await ref
+        .read(userRepositoryProvider)
+        .sendFriendRequest(fromUid: _uid, toUid: toUid);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend Request Sent! ⏳')));
+    }
+  }
+
+  Future<void> _cancelFriendRequest(String toUid) async {
+    await ref
+        .read(userRepositoryProvider)
+        .cancelFriendRequest(fromUid: _uid, toUid: toUid);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend Request Cancelled ❌')));
+    }
+  }
+
   Future<void> _shareTrail() async {
     AppFeedback.tap();
-    final t = widget.trail;
+    final t = _trail;
     final lines = <String>[
       '🏔️ ${t.name}',
       if (t.difficulty.isNotEmpty) 'Difficulty: ${t.difficulty}',
@@ -661,12 +688,12 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   Future<void> _openMaps() async {
     AppFeedback.tap();
     final hasCoords =
-        widget.trail.latitude != 0 || widget.trail.longitude != 0;
+        _trail.latitude != 0 || _trail.longitude != 0;
     final coordPair = hasCoords
-        ? '${widget.trail.latitude},${widget.trail.longitude}'
+        ? '${_trail.latitude},${_trail.longitude}'
         : null;
     final queryLabel = Uri.encodeComponent(
-        widget.trail.name.isEmpty ? 'Kathmandu' : widget.trail.name);
+        _trail.name.isEmpty ? 'Kathmandu' : _trail.name);
     final webDestination = coordPair ?? '$queryLabel,Kathmandu';
 
 
@@ -704,9 +731,19 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rating = widget.trail.ratingScore > 0
-        ? widget.trail.ratingScore
-        : widget.trail.userRating.toDouble();
+    ref.listen(userProfileProvider, (_, next) {
+      final p = next.valueOrNull;
+      setState(() {
+        _myFriends = p?.friends ?? [];
+        _mySentRequests = p?.sentRequests ?? [];
+        _userName = p?.displayName ?? _userName;
+        _userPic = p?.profilePic ?? _userPic;
+      });
+    });
+
+    final rating = _trail.ratingScore > 0
+        ? _trail.ratingScore
+        : _trail.userRating.toDouble();
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -804,7 +841,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   // ─── Hero with carousel + overlay ───────────────────────────────────────
   Widget _heroSection(double rating) {
-    final diff = difficultyColors(context, widget.trail.difficulty);
+    final diff = difficultyColors(context, _trail.difficulty);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -815,7 +852,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           itemBuilder: (_, i) => GestureDetector(
             onTap: () => _openPhotoViewer(_images, i),
             child: Hero(
-              tag: 'trail-hero-${widget.trail.id}-$i',
+              tag: 'trail-hero-${_trail.id}-$i',
               child: CachedNetworkImage(
                 imageUrl: _images[i],
                 fit: BoxFit.cover,
@@ -848,7 +885,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           left: 12,
           child: _heroIconButton(Icons.arrow_back_rounded, () {
             AppFeedback.tap();
-            widget.onBack();
+            ref.read(currentTrailProvider.notifier).state = null;
           }),
         ),
         if (_images.length > 1)
@@ -923,13 +960,13 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
                       border: Border.all(color: Colors.white.withOpacity(0.4)),
                     ),
                     child: Text(
-                      widget.trail.difficulty.toUpperCase(),
+                      _trail.difficulty.toUpperCase(),
                       style: AppText.labelSm(diff.fg)
                           .copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (widget.trail.transportRoute.isNotEmpty)
+                  if (_trail.transportRoute.isNotEmpty)
                     Flexible(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -940,7 +977,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
                           border: Border.all(color: Colors.white.withOpacity(0.3)),
                         ),
                         child: Text(
-                          widget.trail.transportRoute,
+                          _trail.transportRoute,
                           overflow: TextOverflow.ellipsis,
                           style: AppText.labelSm(Colors.white),
                         ),
@@ -950,7 +987,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                widget.trail.name,
+                _trail.name,
                 style: AppText.headlineLg(Colors.white)
                     .copyWith(fontSize: 26, height: 1.15),
                 maxLines: 2,
@@ -996,10 +1033,10 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // hero by -mt-8.
   Widget _quickStatsBar() {
     final scheme = Theme.of(context).colorScheme;
-    final duration = _shortDuration(widget.trail.duration);
-    final fare = _shortFare(widget.trail.fare);
+    final duration = _shortDuration(_trail.duration);
+    final fare = _shortFare(_trail.fare);
     final mode =
-        widget.trail.travelMode.isEmpty ? 'Trek' : widget.trail.travelMode;
+        _trail.travelMode.isEmpty ? 'Trek' : _trail.travelMode;
 
     return Container(
       decoration: BoxDecoration(
@@ -1107,7 +1144,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // a compact filled bookmark icon button.
   Widget _actionRow() {
     final scheme = Theme.of(context).colorScheme;
-    final fav = widget.isFavorite;
+    final fav = _isFavorite;
     return Row(
       children: [
         Expanded(
@@ -1140,11 +1177,9 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
           shadowColor: Colors.black.withValues(alpha: 0.18),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.md),
-            onTap: widget.onToggleFavorite == null
-                ? null
-                : () {
-                    AppFeedback.toggle();
-                    widget.onToggleFavorite!();
+            onTap: () {
+                AppFeedback.toggle();
+                _toggleFavorite();
                   },
             child: Container(
               width: 52,
@@ -1192,7 +1227,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // ─── Hike tracking card ─────────────────────────────────────────────────
   Widget _hikeTrackingCard() {
     final scheme = Theme.of(context).colorScheme;
-    final activeHere = _tracking && _activeTrailId == widget.trail.id;
+    final activeHere = _tracking && _activeTrailId == _trail.id;
     final km = activeHere ? _distance / 1000.0 : _finishedDistance / 1000.0;
     final showKm = activeHere || _finishedDistance > 0;
 
@@ -1396,11 +1431,11 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   // ─── Discovered by card ─────────────────────────────────────────────────
   Widget _discoveredByCard() {
-    final friend = widget.myFriends.contains(widget.trail.authorId);
-    final sent = widget.mySentRequests.contains(widget.trail.authorId);
-    final selfAuthor = widget.trail.authorId == widget.currentUserId;
+    final friend = _myFriends.contains(_trail.authorId);
+    final sent = _mySentRequests.contains(_trail.authorId);
+    final selfAuthor = _trail.authorId == _uid;
     final authorName =
-        widget.trail.authorName.isEmpty ? 'Anonymous Hiker' : widget.trail.authorName;
+        _trail.authorName.isEmpty ? 'Anonymous Hiker' : _trail.authorName;
 
     return Container(
       decoration: topoCardDecoration(context),
@@ -1435,15 +1470,15 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
               ],
             ),
           ),
-          if (!selfAuthor && widget.trail.authorId.isNotEmpty)
+          if (!selfAuthor && _trail.authorId.isNotEmpty)
             OutlinedButton(
               onPressed: () {
                 if (friend) return;
                 if (sent) {
-                  widget.onCancelFriendRequest(widget.trail.authorId);
+                  _cancelFriendRequest(_trail.authorId);
                 } else {
                   AppFeedback.success();
-                  widget.onSendFriendRequest(widget.trail.authorId);
+                  _sendFriendRequest(_trail.authorId);
                 }
               },
               style: OutlinedButton.styleFrom(
@@ -1476,18 +1511,18 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   Widget _howToGetThereCard() {
     final scheme = Theme.of(context).colorScheme;
     final start =
-        widget.trail.transportRoute.isEmpty ? 'Trailhead' : widget.trail.transportRoute;
-    final mode = widget.trail.travelMode;
+        _trail.transportRoute.isEmpty ? 'Trailhead' : _trail.transportRoute;
+    final mode = _trail.travelMode;
     final modeLabel = mode.isEmpty ? 'On foot' : mode;
-    final fare = widget.trail.fare.isEmpty ? null : widget.trail.fare;
-    final hasBus = mode.toLowerCase() == 'bus' && widget.trail.busAccess.isNotEmpty;
+    final fare = _trail.fare.isEmpty ? null : _trail.fare;
+    final hasBus = mode.toLowerCase() == 'bus' && _trail.busAccess.isNotEmpty;
 
     // Each stop: (icon, title, subtitle, fareOrNote, isStartCircle).
     final stops = <({IconData icon, String title, String subtitle, String? note, bool start})>[];
     if (hasBus) {
       stops.add((
         icon: Icons.directions_bus_rounded,
-        title: widget.trail.busAccess,
+        title: _trail.busAccess,
         subtitle: 'Board your bus / micro toward $start',
         note: fare != null ? 'Fare: $fare' : null,
         start: true,
@@ -1495,9 +1530,9 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
       stops.add((
         icon: Icons.flag_rounded,
         title: start,
-        subtitle: widget.trail.duration.isEmpty
+        subtitle: _trail.duration.isEmpty
             ? 'Trail entry and start of the hike'
-            : 'Trail entry • ${widget.trail.duration}',
+            : 'Trail entry • ${_trail.duration}',
         note: null,
         start: false,
       ));
@@ -1614,28 +1649,28 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     final pairs = <({String label, String value})>[
       (
         label: 'Difficulty',
-        value: widget.trail.difficulty.isEmpty ? '—' : widget.trail.difficulty,
+        value: _trail.difficulty.isEmpty ? '—' : _trail.difficulty,
       ),
       (
         label: 'Est Cost',
-        value: widget.trail.fare.isEmpty ? 'Free' : widget.trail.fare,
+        value: _trail.fare.isEmpty ? 'Free' : _trail.fare,
       ),
       (
         label: 'Travel Mode',
         value:
-            widget.trail.travelMode.isEmpty ? 'Trek' : widget.trail.travelMode,
+            _trail.travelMode.isEmpty ? 'Trek' : _trail.travelMode,
       ),
       (
         label: 'From Bus',
-        value: widget.trail.busAccess.isEmpty
-            ? (widget.trail.transportRoute.isEmpty
+        value: _trail.busAccess.isEmpty
+            ? (_trail.transportRoute.isEmpty
                 ? '—'
-                : widget.trail.transportRoute)
-            : widget.trail.busAccess,
+                : _trail.transportRoute)
+            : _trail.busAccess,
       ),
       (
         label: 'Duration',
-        value: widget.trail.duration.isEmpty ? '—' : widget.trail.duration,
+        value: _trail.duration.isEmpty ? '—' : _trail.duration,
       ),
       (
         label: 'Availability',
@@ -1687,7 +1722,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // labelled icon row matching the HTML reference.
   Widget _sharedExperiencesCard() {
     final scheme = Theme.of(context).colorScheme;
-    final parsed = _parseExperience(widget.trail.description);
+    final parsed = _parseExperience(_trail.description);
 
     final rows = <({IconData icon, String label, String value})>[
       if (parsed.seasons.isNotEmpty)
@@ -1761,7 +1796,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   }
 
   bool _hasExperience() {
-    final p = _parseExperience(widget.trail.description);
+    final p = _parseExperience(_trail.description);
     return p.seasons.isNotEmpty ||
         p.crowd.isNotEmpty ||
         p.hiddenSpots.isNotEmpty ||
@@ -1827,7 +1862,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // ─── Gallery + share photo ──────────────────────────────────────────────
   Widget _galleryCard() {
     final scheme = Theme.of(context).colorScheme;
-    final trailPhotos = widget.trail.imageUrls.where((u) => u.isNotEmpty).toList();
+    final trailPhotos = _trail.imageUrls.where((u) => u.isNotEmpty).toList();
     final communityPhotos = _gallery.where((g) => g.url.isNotEmpty).toList();
     final allUrls = <String>[
       ...trailPhotos,
@@ -1971,7 +2006,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   // ─── Secondary actions: plan + share (Discussion removed) ───────────────
   Widget _secondaryActionGrid() {
-    final iHost = _events.any((e) => e.creatorId == widget.currentUserId);
+    final iHost = _events.any((e) => e.creatorId == _uid);
     return Row(
       children: [
         Expanded(
@@ -2022,8 +2057,8 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
 
   // ─── Group hike (event) card ────────────────────────────────────────────
   Widget _eventCard(HikeEvent event) {
-    final isGoing = event.attendees.contains(widget.currentUserId);
-    final isCreator = event.creatorId == widget.currentUserId;
+    final isGoing = event.attendees.contains(_uid);
+    final isCreator = event.creatorId == _uid;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
@@ -2090,7 +2125,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
   // surface an edit/delete hint instead.
   TrailReview? _myExistingReview() {
     for (final r in _reviews) {
-      if (r.userId == widget.currentUserId) return r;
+      if (r.userId == _uid) return r;
     }
     return null;
   }
@@ -2190,7 +2225,7 @@ class _TrailDetailScreenState extends State<TrailDetailScreen> {
     final scheme = Theme.of(context).colorScheme;
     final initials =
         r.userName.isEmpty ? '?' : r.userName.trim()[0].toUpperCase();
-    final isMine = r.userId == widget.currentUserId;
+    final isMine = r.userId == _uid;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Match the reference HTML: name + relative timestamp on the left, the
     // star row on the right, italic comment below.

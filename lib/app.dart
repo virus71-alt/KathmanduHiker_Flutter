@@ -131,21 +131,15 @@ class RootShell extends ConsumerWidget {
     final currentChat      = ref.watch(currentChatProvider);
     final viewingProfileId = ref.watch(viewingProfileProvider);
 
-    final favoriteIds       = profile?.favoriteTrailIds ?? {};
     final isAdmin           = profile?.isAdmin ?? false;
     final userName          = profile?.displayName ?? 'Hiker';
     final userProfilePic    = profile?.profilePic ?? '';
-    final myFriends         = profile?.friends ?? [];
-    final mySentRequests    = profile?.sentRequests ?? [];
     final myReceivedRequests = profile?.receivedRequests ?? [];
     final myUnreadChatIds   = profile?.unreadChatIds ?? [];
 
     // ─── Navigation helpers ───────────────────────────────────────────────
     void setTab(String tab) =>
         ref.read(selectedTabProvider.notifier).state = tab;
-
-    void toast(String msg) =>
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
     Widget withBackHandler(Widget child, VoidCallback onBack) => PopScope(
           canPop: false,
@@ -157,29 +151,6 @@ class RootShell extends ConsumerWidget {
         );
 
     // ─── Repository actions ───────────────────────────────────────────────
-    Future<void> toggleFavorite(String trailId) async {
-      final isFav = profile?.favoriteTrailIds.contains(trailId) ?? false;
-      await ref.read(userRepositoryProvider).toggleFavorite(
-        uid: uid,
-        trailId: trailId,
-        add: !isFav,
-      );
-    }
-
-    Future<void> sendFriendRequest(String targetId) async {
-      await ref
-          .read(userRepositoryProvider)
-          .sendFriendRequest(fromUid: uid, toUid: targetId);
-      toast('Friend Request Sent! ⏳');
-    }
-
-    Future<void> cancelFriendRequest(String targetId) async {
-      await ref
-          .read(userRepositoryProvider)
-          .cancelFriendRequest(fromUid: uid, toUid: targetId);
-      toast('Friend Request Cancelled ❌');
-    }
-
     Future<void> removeFriend(String friendId) =>
         ref.read(userRepositoryProvider).removeFriend(
           uid: uid,
@@ -242,35 +213,14 @@ class RootShell extends ConsumerWidget {
 
     if (currentChat != null) {
       return withBackHandler(
-        ChatScreen(
-          currentUserId: uid,
-          friendId: currentChat.id,
-          friendName: currentChat.name,
-          onBack: () => ref.read(currentChatProvider.notifier).state = null,
-          onProfileClick: () {
-            ref.read(viewingProfileProvider.notifier).state = currentChat.id;
-            ref.read(currentChatProvider.notifier).state = null;
-          },
-        ),
+        const ChatScreen(),
         () => ref.read(currentChatProvider.notifier).state = null,
       );
     }
 
     if (currentTrail != null) {
       return withBackHandler(
-        TrailDetailScreen(
-          trail: currentTrail,
-          currentUserId: uid,
-          currentUserName: userName,
-          currentUserPic: userProfilePic,
-          myFriends: myFriends,
-          mySentRequests: mySentRequests,
-          isFavorite: favoriteIds.contains(currentTrail.id),
-          onBack: () => ref.read(currentTrailProvider.notifier).state = null,
-          onSendFriendRequest: sendFriendRequest,
-          onCancelFriendRequest: cancelFriendRequest,
-          onToggleFavorite: () => toggleFavorite(currentTrail.id),
-        ),
+        const TrailDetailScreen(),
         () => ref.read(currentTrailProvider.notifier).state = null,
       );
     }

@@ -2,48 +2,47 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../models/chat_message.dart';
+import '../state/current_uid_provider.dart';
+import '../state/navigation_providers.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 
-class ChatScreen extends StatefulWidget {
-  final String currentUserId;
-  final String friendId;
-  final String friendName;
-  final VoidCallback onBack;
-  final VoidCallback onProfileClick;
-
-  const ChatScreen({
-    super.key,
-    required this.currentUserId,
-    required this.friendId,
-    required this.friendName,
-    required this.onBack,
-    required this.onProfileClick,
-  });
+class ChatScreen extends ConsumerStatefulWidget {
+  const ChatScreen({super.key});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _db = FirebaseFirestore.instance;
   final _ctl = TextEditingController();
   final _scroll = ScrollController();
   List<ChatMessage> _messages = [];
   StreamSubscription? _sub;
 
+  // Provider-derived values seeded in initState.
+  String _uid = '';
+  String _friendId = '';
+  String _friendName = '';
+
   static const _quickReactions = ['❤️', '😂', '😮', '😢', '👍', '🔥'];
 
-  String get _chatId => widget.currentUserId.compareTo(widget.friendId) < 0
-      ? '${widget.currentUserId}_${widget.friendId}'
-      : '${widget.friendId}_${widget.currentUserId}';
+  String get _chatId => _uid.compareTo(_friendId) < 0
+      ? '${_uid}_${_friendId}'
+      : '${_friendId}_${_uid}';
 
   @override
   void initState() {
     super.initState();
+    _uid = ref.read(currentUidProvider);
+    final chat = ref.read(currentChatProvider);
+    _friendId = chat?.id ?? '';
+    _friendName = chat?.name ?? '';
     _sub = _db
         .collection('chats')
         .doc(_chatId)
@@ -55,7 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // Filter out messages the current user has soft-deleted on their side.
       final msgs = s.docs
           .map(ChatMessage.fromDoc)
-          .where((m) => !m.deletedBy.contains(widget.currentUserId))
+          .where((m) => !m.deletedBy.contains(_uid))
           .toList();
       setState(() => _messages = msgs);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,7 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
       // Clear unread badge for this chat on this user's side.
-      _db.collection('users').doc(widget.currentUserId).update({
+      _db.collection('users').doc(_uid).update({
         'unreadChatIds': FieldValue.arrayRemove([_chatId]),
       });
     });
@@ -89,7 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctl.clear();
     final ts = DateTime.now().millisecondsSinceEpoch;
     await _db.collection('chats').doc(_chatId).collection('messages').add({
-      'senderId': widget.currentUserId,
+      'senderId': _uid,
       'text': text,
       'timestamp': ts,
       'status': 'sent',
@@ -97,7 +96,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'reactions': <String, String>{},
       'deletedBy': <String>[],
     });
-    await _db.collection('users').doc(widget.friendId).update({
+    await _db.collection('users').doc(_friendId).update({
       'unreadChatIds': FieldValue.arrayUnion([_chatId]),
     });
   }
@@ -105,10 +104,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _react(ChatMessage m, String emoji) async {
     AppFeedback.tap();
     final newReactions = Map<String, String>.from(m.reactions);
-    if (newReactions[widget.currentUserId] == emoji) {
-      newReactions.remove(widget.currentUserId);
+    if (newReactions[_uid] == emoji) {
+      newReactions.remove(_uid);
     } else {
-      newReactions[widget.currentUserId] = emoji;
+      newReactions[_uid] = emoji;
     }
     await _db
         .collection('chats')
@@ -136,7 +135,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection('messages')
         .doc(m.id)
         .update({
-      'deletedBy': FieldValue.arrayUnion([widget.currentUserId])
+      'deletedBy': FieldValue.arrayUnion([_uid])
     });
   }
 
@@ -151,7 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openActions(ChatMessage m) {
-    final mine = m.senderId == widget.currentUserId;
+    final mine = m.senderId == _uid;
     final scheme = Theme.of(context).colorScheme;
     unawaited(showModalBottomSheet<void>(
       context: context,
@@ -263,14 +262,15 @@ class _ChatScreenState extends State<ChatScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () {
             AppFeedback.tap();
-            widget.onBack();
+            ref.read(currentChatProvider.notifier).state = null;
           },
         ),
         titleSpacing: 0,
         title: InkWell(
           onTap: () {
             AppFeedback.tap();
-            widget.onProfileClick();
+            ref.read(viewingProfileProvider.notifier).state = _friendId;
+            ref.read(currentChatProvider.notifier).state = null;
           },
           borderRadius: BorderRadius.circular(AppRadius.lg),
           child: Padding(
@@ -281,8 +281,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   radius: 18,
                   backgroundColor: AppColors.primaryFixed,
                   child: Text(
-                    widget.friendName.isNotEmpty
-                        ? widget.friendName[0].toUpperCase()
+                    _friendName.isNotEmpty
+                        ? _friendName[0].toUpperCase()
                         : '?',
                     style: AppText.labelLg(AppColors.primary)
                         .copyWith(fontWeight: FontWeight.w800),
@@ -293,7 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.friendName,
+                      Text(_friendName,
                           style: AppText.labelLg(scheme.onSurface)
                               .copyWith(fontWeight: FontWeight.w700)),
                       Text('Tap for profile',
@@ -324,7 +324,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               size: 36, color: scheme.primary),
                         ),
                         const SizedBox(height: 12),
-                        Text('Say hi to ${widget.friendName}',
+                        Text('Say hi to ${_friendName}',
                             style: AppText.bodyMd(scheme.onSurfaceVariant)),
                       ],
                     ),
@@ -344,7 +344,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _messageBubble(ChatMessage m, int i) {
-    final mine = m.senderId == widget.currentUserId;
+    final mine = m.senderId == _uid;
     final scheme = Theme.of(context).colorScheme;
     final isUnsent = m.isUnsent;
     final bg = mine
@@ -438,7 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final v in m.reactions.values) {
       counts[v] = (counts[v] ?? 0) + 1;
     }
-    final mine = m.reactions[widget.currentUserId];
+    final mine = m.reactions[_uid];
     return Wrap(
       spacing: 4,
       children: counts.entries.map((e) {
