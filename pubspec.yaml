@@ -75,6 +75,9 @@ dependencies:
   flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.6.1
 
+  # Functional error handling — Either<Failure, T> on all repository returns.
+  fpdart: ^1.1.0
+
 dev_dependencies:
   # Strict lint set required by ULTIMATE.md §14.1.
   very_good_analysis: ^6.0.0
@@ -86,6 +89,9 @@ dev_dependencies:
   riverpod_generator: ^2.6.1
   custom_lint: ^0.7.0
   riverpod_lint: ^2.6.1
+
+  # In-memory Firestore for unit tests — no Firebase init required.
+  fake_cloud_firestore: ^3.1.0
 
 flutter:
   uses-material-design: true
