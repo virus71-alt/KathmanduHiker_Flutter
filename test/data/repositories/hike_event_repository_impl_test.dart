@@ -1,9 +1,9 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kathmanduhiker/core/errors/failures.dart';
-import 'package:kathmanduhiker/data/repositories/hike_event_repository_impl.dart';
-import 'package:kathmanduhiker/data/sources/firestore_hike_event_source.dart';
-import 'package:kathmanduhiker/domain/entities/hike_event.dart';
+import 'package:yama/core/errors/failures.dart';
+import 'package:yama/data/repositories/hike_event_repository_impl.dart';
+import 'package:yama/data/sources/firestore_hike_event_source.dart';
+import 'package:yama/domain/entities/hike_event.dart';
 
 void main() {
   late FakeFirebaseFirestore fakeDb;

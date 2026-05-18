@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kathmanduhiker/data/models/hike_event_dto.dart';
-import 'package:kathmanduhiker/domain/entities/hike_event.dart';
+import 'package:yama/data/models/hike_event_dto.dart';
+import 'package:yama/domain/entities/hike_event.dart';
 
 void main() {
   group('HikeEventDto.fromDoc', () {

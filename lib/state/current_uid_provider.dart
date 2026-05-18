@@ -1,8 +1,6 @@
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'auth_state_provider.dart';
-
-part 'current_uid_provider.g.dart';
 
 /// Derives the current user's UID from [authStateProvider].
 ///
@@ -10,9 +8,8 @@ part 'current_uid_provider.g.dart';
 /// loading — screens that consume this are only mounted inside RootShell,
 /// which AuthGate only renders once a User is confirmed. No null-guards
 /// needed at call sites.
-@Riverpod(keepAlive: true)
-String currentUid(Ref ref) {
+final currentUidProvider = Provider<String>((ref) {
   final user = ref.watch(authStateProvider).requireValue;
   if (user == null) throw StateError('currentUid read while logged out');
   return user.uid;
-}
+});

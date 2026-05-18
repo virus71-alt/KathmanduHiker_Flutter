@@ -281,6 +281,7 @@ class RootShell extends ConsumerWidget {
       canPop: isOnHome,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (currentTab == 'AddTrail') return;
         setTab(currentTab == 'Achievements' || currentTab == 'Leaderboard'
             ? 'Profile'
             : 'Home');

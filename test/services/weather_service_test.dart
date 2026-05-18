@@ -12,7 +12,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kathmanduhiker/services/weather_service.dart';
+import 'package:yama/services/weather_service.dart';
 
 void main() {
   group('WeatherService.getWeather', () {

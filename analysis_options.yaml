@@ -1,4 +1,4 @@
-# Lint configuration for Kathmandu Hiker.
+# Lint configuration for Yama.
 #
 # Per ULTIMATE.md §14.1 we use very_good_analysis as the base rule set —
 # it's the strictest practical Dart/Flutter lint pack. A handful of rules

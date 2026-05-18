@@ -8,6 +8,8 @@ class TrailReview {
   final double rating;
   final String comment;
   final int timestamp;
+  final Map<String, double> categories;
+  final bool isVerified;
 
   TrailReview({
     this.id = '',
@@ -17,6 +19,8 @@ class TrailReview {
     this.rating = 5.0,
     this.comment = '',
     this.timestamp = 0,
+    this.categories = const {},
+    this.isVerified = false,
   });
 
   factory TrailReview.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -29,6 +33,11 @@ class TrailReview {
       rating: ((d['rating'] ?? 5) as num).toDouble(),
       comment: (d['comment'] ?? '') as String,
       timestamp: ((d['timestamp'] ?? 0) as num).toInt(),
+      categories: (d['categories'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, (v as num).toDouble()),
+          ) ??
+          const {},
+      isVerified: (d['isVerified'] ?? false) as bool,
     );
   }
 }

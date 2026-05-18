@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Kathmandu Hiker design tokens — Stitch design system.
+/// Yama design tokens — Stitch design system.
 ///
 /// `AppColors` exposes both **light** (default static getters) and **dark**
 /// (`AppColors.dark`) palettes. Most app code should read colors from

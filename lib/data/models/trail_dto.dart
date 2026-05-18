@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/entities/journey.dart';
 import '../../domain/entities/trail.dart';
 
 class TrailDto {
@@ -22,6 +23,13 @@ class TrailDto {
   final bool isApproved;
   final String authorId;
   final String authorName;
+  final List<JourneyLeg> journeyLegs;
+  final String reachDifficulty;
+  final String lastReturnVehicle;
+  final String localGuidance;
+  final int reviewCount;
+  final String confidenceLabel;
+  final Map<String, double> categoryAverages;
 
   const TrailDto({
     this.id = '',
@@ -43,6 +51,13 @@ class TrailDto {
     this.isApproved = false,
     this.authorId = '',
     this.authorName = '',
+    this.journeyLegs = const [],
+    this.reachDifficulty = '',
+    this.lastReturnVehicle = '',
+    this.localGuidance = '',
+    this.reviewCount = 0,
+    this.confidenceLabel = 'Low Confidence',
+    this.categoryAverages = const {},
   });
 
   factory TrailDto.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -67,6 +82,19 @@ class TrailDto {
       isApproved: (d['isApproved'] ?? false) as bool,
       authorId: (d['authorId'] ?? '') as String,
       authorName: (d['authorName'] ?? '') as String,
+      journeyLegs: (d['journeyLegs'] as List<dynamic>?)
+              ?.map((e) => JourneyLeg.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      reachDifficulty: (d['reachDifficulty'] ?? '') as String,
+      lastReturnVehicle: (d['lastReturnVehicle'] ?? '') as String,
+      localGuidance: (d['localGuidance'] ?? '') as String,
+      reviewCount: ((d['reviewCount'] ?? 0) as num).toInt(),
+      confidenceLabel: (d['confidenceLabel'] ?? 'Low Confidence') as String,
+      categoryAverages: (d['categoryAverages'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, (v as num).toDouble()),
+          ) ??
+          const {},
     );
   }
 
@@ -90,6 +118,13 @@ class TrailDto {
         isApproved: t.isApproved,
         authorId: t.authorId,
         authorName: t.authorName,
+        journeyLegs: t.journeyLegs,
+        reachDifficulty: t.reachDifficulty,
+        lastReturnVehicle: t.lastReturnVehicle,
+        localGuidance: t.localGuidance,
+        reviewCount: t.reviewCount,
+        confidenceLabel: t.confidenceLabel,
+        categoryAverages: t.categoryAverages,
       );
 
   Trail toEntity() => Trail(
@@ -112,6 +147,13 @@ class TrailDto {
         isApproved: isApproved,
         authorId: authorId,
         authorName: authorName,
+        journeyLegs: journeyLegs,
+        reachDifficulty: reachDifficulty,
+        lastReturnVehicle: lastReturnVehicle,
+        localGuidance: localGuidance,
+        reviewCount: reviewCount,
+        confidenceLabel: confidenceLabel,
+        categoryAverages: categoryAverages,
       );
 
   Map<String, dynamic> toMap() => {
@@ -133,5 +175,12 @@ class TrailDto {
         'isApproved': isApproved,
         'authorId': authorId,
         'authorName': authorName,
+        'journeyLegs': journeyLegs.map((l) => l.toMap()).toList(),
+        'reachDifficulty': reachDifficulty,
+        'lastReturnVehicle': lastReturnVehicle,
+        'localGuidance': localGuidance,
+        'reviewCount': reviewCount,
+        'confidenceLabel': confidenceLabel,
+        'categoryAverages': categoryAverages,
       };
 }

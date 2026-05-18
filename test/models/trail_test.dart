@@ -5,7 +5,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kathmanduhiker/models/trail.dart';
+import 'package:yama/models/trail.dart';
 
 void main() {
   group('Trail.fromDoc', () {

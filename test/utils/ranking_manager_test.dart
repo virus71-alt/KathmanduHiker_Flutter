@@ -2,7 +2,7 @@
 // is pure functions, so it's an easy starting point that should run in ms.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kathmanduhiker/utils/ranking_manager.dart';
+import 'package:yama/utils/ranking_manager.dart';
 
 void main() {
   group('getLevelNumber', () {

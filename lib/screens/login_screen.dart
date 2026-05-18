@@ -547,44 +547,14 @@ class _LoginScreenState extends State<LoginScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    scheme.primary,
-                    scheme.primaryContainer,
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: scheme.primary.withValues(alpha: 0.32),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.terrain_rounded,
-                  size: 20, color: scheme.onPrimary),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'Yama',
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ],
+        Text(
+          'Namaste 🏔️',
+          style: TextStyle(
+            color: scheme.primary,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
         ),
         Tooltip(
           message: isDark ? 'Switch to light mode' : 'Switch to dark mode',
@@ -630,7 +600,7 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(99),
           ),
           child: Text(
-            _isSignUp ? 'JOIN THE COMMUNITY' : 'EXPLORE KATHMANDU',
+            _isSignUp ? 'JOIN THE COMMUNITY' : 'EXPLORE WITH YAMA',
             style: TextStyle(
               color: scheme.primary,
               fontSize: 10,
@@ -654,7 +624,7 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           _isSignUp
               ? 'Join the community and start logging trails.'
-              : 'Sign in to continue exploring Kathmandu.',
+              : 'Sign in to continue your adventure.',
           style: TextStyle(
             fontSize: 14,
             color: scheme.onSurfaceVariant,

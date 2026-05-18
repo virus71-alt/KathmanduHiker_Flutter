@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/analytics.dart';
+import '../domain/entities/journey.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/image_utils.dart';
@@ -29,7 +30,6 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   final _picker = ImagePicker();
 
   final _name = TextEditingController();
-  final _startPoint = TextEditingController();
   final _duration = TextEditingController();
   final _busAccess = TextEditingController();
   final _extraNotes = TextEditingController();
@@ -52,6 +52,12 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   String _crowdLevel = '';
   final Set<String> _hiddenSpots = {};
   final Set<String> _difficultParts = {};
+
+  // Journey Builder — Step 3 structured legs
+  final List<_JourneyLegDraft> _legs = [_JourneyLegDraft()];
+  String _reachDifficulty = '';
+  String _lastReturnVehicle = '';
+  final _localGuidance = TextEditingController();
 
   // Stepper state
   final PageController _pageCtl = PageController();
@@ -81,11 +87,14 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _startPoint.dispose();
     _duration.dispose();
     _busAccess.dispose();
     _extraNotes.dispose();
     _locationSearchCtl.dispose();
+    _localGuidance.dispose();
+    for (final leg in _legs) {
+      leg.dispose();
+    }
     _pageCtl.dispose();
     super.dispose();
   }
@@ -151,7 +160,10 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
 
   Future<void> _submit() async {
     final name = _name.text.trim();
-    final start = _startPoint.text.trim();
+    final firstLeg = _legs.isNotEmpty ? _legs.first : null;
+    final start = firstLeg != null
+        ? (firstLeg.mode.hasFromTo ? firstLeg.from.text.trim() : firstLeg.landmark.text.trim())
+        : '';
     if (name.isEmpty || start.isEmpty) {
       AppFeedback.warning();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -184,18 +196,41 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
       }
 
       final rounded = _rating.round().clamp(1, 5);
+
+      // Derive backward-compat flat fields from structured legs.
+      final firstLeg = _legs.isNotEmpty ? _legs.first : null;
+      final legEntities = _legs.map((d) => d.toEntity().toMap()).toList();
+      final totalFareMin = _legs.fold(0, (s, l) => s + l.fareMin);
+      final totalFareMax = _legs.fold(0, (s, l) => s + l.fareMax);
+      final fareStr = totalFareMin == 0 && totalFareMax == 0
+          ? 'Free'
+          : totalFareMin == totalFareMax
+              ? 'Rs $totalFareMin'
+              : 'Rs $totalFareMin–$totalFareMax';
+      final totalDur = _legs.fold(0, (s, l) => s + l.durationMin);
+      final durStr = totalDur == 0
+          ? ''
+          : totalDur < 60
+              ? '${totalDur} min'
+              : '${totalDur ~/ 60}h ${totalDur % 60 == 0 ? '' : '${totalDur % 60}m'}'.trim();
+
       await _db.collection('trails').add({
         'name': name,
         'difficulty': _difficulty,
-        'transportRoute': start,
-        'fare': _estimatedCost,
+        // Legacy flat fields — auto-derived from structured legs for old readers.
+        'transportRoute': firstLeg?.mode.hasFromTo == true
+            ? firstLeg!.from.text.trim()
+            : firstLeg?.landmark.text.trim() ?? start,
+        'fare': fareStr,
         'food': '',
         'description': _buildExperience(),
         'userRating': rounded,
         'ratingScore': _rating,
-        'travelMode': _travelMode,
-        'busAccess': _busAccess.text.trim(),
-        'duration': _duration.text.trim(),
+        'travelMode': firstLeg?.mode.label ?? _travelMode,
+        'busAccess': firstLeg?.mode.hasFromTo == true
+            ? firstLeg!.to.text.trim()
+            : '',
+        'duration': durStr.isEmpty ? _duration.text.trim() : durStr,
         'facilities': _facilities.toList()..sort(),
         'latitude': _pickedLocation.latitude,
         'longitude': _pickedLocation.longitude,
@@ -204,6 +239,11 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
         'authorId': uid,
         'authorName': authorName,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
+        // Structured journey data — consumed by TrailDetailScreen journey section.
+        'journeyLegs': legEntities,
+        'reachDifficulty': _reachDifficulty,
+        'lastReturnVehicle': _lastReturnVehicle,
+        'localGuidance': _localGuidance.text.trim(),
       });
 
       if (uid.isNotEmpty) {
@@ -253,7 +293,11 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
       case 1:
         return _difficulty.isNotEmpty;
       case 2:
-        return _startPoint.text.trim().isNotEmpty;
+        // At least one leg with a from-location (or landmark for Walk)
+        return _legs.isNotEmpty &&
+            (_legs.first.mode.hasFromTo
+                ? _legs.first.from.text.trim().isNotEmpty
+                : _legs.first.landmark.text.trim().isNotEmpty);
       default:
         return true;
     }
@@ -462,7 +506,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
                           borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
-                      child: const Text('Back'),
+                      child: const Text('Previous'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -851,137 +895,208 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
     }
   }
 
-  // ── Step 3: Transport details (leg card + fare + duration + map) ────────
+  // ── Step 3: Journey Builder ───────────────────────────────────────────────
+
+  static const _commonLocations = [
+    'Ratnapark', 'Kalanki', 'Gongabu', 'Chabahil', 'Lagankhel',
+    'Balkhu', 'Koteshwor', 'Budhanilkantha', 'Maharajgunj',
+    'Boudha', 'Patan', 'Bhaktapur', 'Kirtipur', 'Naikap',
+  ];
+
+  static const _farePresets = [
+    (label: 'Free',       min: 0,   max: 0),
+    (label: 'Rs 20–30',  min: 20,  max: 30),
+    (label: 'Rs 40–50',  min: 40,  max: 50),
+    (label: 'Rs 80–100', min: 80,  max: 100),
+    (label: 'Rs 150–200',min: 150, max: 200),
+    (label: 'Rs 300+',   min: 300, max: 500),
+  ];
+
+  static const _durationPresets = [
+    (label: '10m', min: 10),
+    (label: '15m', min: 15),
+    (label: '30m', min: 30),
+    (label: '45m', min: 45),
+    (label: '1h',  min: 60),
+    (label: '1.5h',min: 90),
+    (label: '2h+', min: 120),
+  ];
+
+  static const _reachOptions = [
+    'Easy', 'Confusing', 'Multiple vehicles', 'No public transport', 'Remote',
+  ];
+
+  static const _returnTimePresets = [
+    '4:00 PM', '5:00 PM', '5:30 PM', '6:00 PM', '7:00 PM',
+  ];
+
+  IconData _transportIcon(TransportMode m) => switch (m) {
+        TransportMode.bus            => Icons.directions_bus_rounded,
+        TransportMode.micro          => Icons.airport_shuttle_rounded,
+        TransportMode.tempo          => Icons.directions_transit_rounded,
+        TransportMode.taxi           => Icons.local_taxi_rounded,
+        TransportMode.bike           => Icons.directions_bike_rounded,
+        TransportMode.walk           => Icons.directions_walk_rounded,
+        TransportMode.privateVehicle => Icons.directions_car_rounded,
+        TransportMode.cableCar       => Icons.cable_rounded,
+      };
+
   Widget _stepTransport() {
     final colors = Theme.of(context).colorScheme;
     return ListView(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.marginMobile, 8, AppSpacing.marginMobile, 24),
       children: [
+        Text('Journey Builder',
+            style: AppText.headlineMd(colors.onSurface)
+                .copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
         Text(
-          'Add instructions on how to reach the starting point of this trail.',
-          style: AppText.bodyMd(colors.onSurfaceVariant).copyWith(height: 1.45),
+          'Build the route to the trailhead step by step — other hikers will thank you.',
+          style: AppText.bodyMd(colors.onSurfaceVariant)
+              .copyWith(height: 1.45, fontSize: 14),
         ),
         const SizedBox(height: AppSpacing.stackMd),
-        // Transport Leg Card
-        Container(
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: colors.outlineVariant),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(_modeIcon(_travelMode),
-                        color: colors.primary, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Leg 1',
-                    style: AppText.labelLg(colors.onSurface)
-                        .copyWith(fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Divider(color: colors.outlineVariant, height: 1),
-              const SizedBox(height: 16),
 
-              _fieldLabel('Start Point *'),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _startPoint,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.location_on_outlined, size: 20),
-                  hintText: 'e.g. Ratnapark Bus Station',
-                ),
-              ),
+        // ── Leg cards ─────────────────────────────────────────────────────
+        for (var i = 0; i < _legs.length; i++) ...[
+          _buildLegCard(i),
+          if (i < _legs.length - 1) _legConnector(),
+        ],
 
-              if (_travelMode == 'Bus') ...[
-                const SizedBox(height: 14),
-                _fieldLabel('Bus Pickup / Boarding Stop'),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _busAccess,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.flag_outlined, size: 20),
-                    hintText: 'e.g. Budhanilkantha Gate',
-                  ),
-                ),
-              ],
+        // Final node: trail start
+        _trailStartNode(),
 
-              const SizedBox(height: 14),
-              _fieldLabel('Estimated Fare'),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                initialValue: _estimatedCost,
-                isExpanded: true,
-                icon: const Icon(Icons.expand_more_rounded),
-                decoration: InputDecoration(
-                  prefixIcon: const Padding(
-                    padding: EdgeInsets.only(left: 14, right: 6),
-                    child: Text(
-                      'NPR',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 13),
-                    ),
-                  ),
-                  prefixIconConstraints:
-                      const BoxConstraints(minWidth: 0, minHeight: 0),
-                ),
-                items: _costs
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  AppFeedback.toggle();
-                  setState(() => _estimatedCost = v);
-                },
-              ),
+        const SizedBox(height: 14),
 
-              const SizedBox(height: 14),
-              _fieldLabel('Trail Duration'),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _duration,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.schedule_rounded, size: 20),
-                  hintText: 'e.g. 4-5 Hours',
-                ),
-              ),
-            ],
+        // Add leg button
+        OutlinedButton.icon(
+          onPressed: () {
+            AppFeedback.tap();
+            setState(() => _legs.add(_JourneyLegDraft()));
+          },
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: const Text('Add another leg'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(44),
+            side: BorderSide(color: colors.primary),
+            foregroundColor: colors.primary,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md)),
           ),
         ),
 
+        // ── Journey summary strip (shown when >1 leg) ─────────────────────
+        if (_legs.length > 1) ...[
+          const SizedBox(height: 16),
+          _journeySummaryStrip(),
+        ],
+
+        // ── Reach difficulty ──────────────────────────────────────────────
+        const SizedBox(height: AppSpacing.stackMd),
+        _sectionTitle('How hard to reach?'),
+        _sectionSubtitle('Helps hikers plan ahead.'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _reachOptions.map((opt) {
+            final sel = _reachDifficulty == opt;
+            return InkWell(
+              onTap: () {
+                AppFeedback.toggle();
+                setState(() => _reachDifficulty = sel ? '' : opt);
+              },
+              borderRadius: BorderRadius.circular(99),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: sel ? colors.primary : colors.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: sel ? colors.primary : colors.outlineVariant,
+                    width: sel ? 1.5 : 1,
+                  ),
+                ),
+                child: Text(opt,
+                    style: TextStyle(
+                      color: sel ? colors.onPrimary : colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    )),
+              ),
+            );
+          }).toList(),
+        ),
+
+        // ── Last return vehicle ────────────────────────────────────────────
+        const SizedBox(height: AppSpacing.stackMd),
+        _sectionTitle('Last return vehicle'),
+        _sectionSubtitle('When does the last public transport leave?'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _returnTimePresets.map((t) {
+            final sel = _lastReturnVehicle == t;
+            return InkWell(
+              onTap: () {
+                AppFeedback.toggle();
+                setState(() => _lastReturnVehicle = sel ? '' : t);
+              },
+              borderRadius: BorderRadius.circular(99),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: sel ? colors.primaryContainer : colors.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: sel ? colors.primary : colors.outlineVariant,
+                    width: sel ? 1.5 : 1,
+                  ),
+                ),
+                child: Text(t,
+                    style: TextStyle(
+                      color: sel ? colors.onPrimaryContainer : colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    )),
+              ),
+            );
+          }).toList(),
+        ),
+
+        // ── Local guidance note ────────────────────────────────────────────
+        const SizedBox(height: AppSpacing.stackMd),
+        Row(children: [
+          _sectionTitle('Local tip'),
+          const SizedBox(width: 8),
+          Icon(Icons.tips_and_updates_outlined,
+              size: 18, color: colors.primary),
+        ]),
+        _sectionSubtitle(
+            'A short hint to find the right vehicle or stop. (Optional)'),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _localGuidance,
+          maxLength: 120,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            hintText: '"Ask for Shivapuri gate" or "Get off at army checkpoint"',
+            prefixIcon: Icon(Icons.chat_bubble_outline_rounded, size: 18),
+          ),
+        ),
+
+        // ── Trailhead map (unchanged) ─────────────────────────────────────
         const SizedBox(height: AppSpacing.stackMd),
         _sectionTitle('Pick the trailhead'),
         _sectionSubtitle(
             'Type a place name or tap directly on the map to drop a pin.'),
         const SizedBox(height: 10),
-        // Search field — submitting (or tapping the search icon) geocodes
-        // the query and recenters the map. Falls back to a snackbar if the
-        // place isn't found.
         TextField(
           controller: _locationSearchCtl,
           textInputAction: TextInputAction.search,
@@ -990,16 +1105,12 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
             hintText: 'e.g. Shivapuri, Nagarkot, Champadevi…',
             prefixIcon: const Icon(Icons.search_rounded, size: 20),
             suffixIcon: _locating
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
                     child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: colors.primary,
-                      ),
-                    ),
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.2)),
                   )
                 : IconButton(
                     icon: const Icon(Icons.travel_explore_rounded, size: 20),
@@ -1029,10 +1140,12 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
           padding: const EdgeInsets.only(top: 6),
           child: Text(
             'Selected: ${_pickedLocation.latitude.toStringAsFixed(5)}, ${_pickedLocation.longitude.toStringAsFixed(5)}',
-            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+            style:
+                TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
           ),
         ),
 
+        // ── Facilities (unchanged) ─────────────────────────────────────────
         const SizedBox(height: AppSpacing.stackMd),
         _sectionTitle('Facilities Available'),
         _sectionSubtitle('Tap all that apply'),
@@ -1072,14 +1185,14 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
                       color: selected ? colors.onPrimary : colors.primary,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      f,
-                      style: TextStyle(
-                        color: selected ? colors.onPrimary : colors.onSurface,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
+                    Text(f,
+                        style: TextStyle(
+                          color: selected
+                              ? colors.onPrimary
+                              : colors.onSurface,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        )),
                   ],
                 ),
               ),
@@ -1087,6 +1200,408 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  // ── Leg card ──────────────────────────────────────────────────────────────
+  Widget _buildLegCard(int i) {
+    final draft = _legs[i];
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(children: [
+            _legNumberBadge(i + 1, colors),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Leg ${i + 1}',
+                  style: AppText.labelLg(colors.onSurface)
+                      .copyWith(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+            if (_legs.length > 1)
+              GestureDetector(
+                onTap: () => setState(() {
+                  _legs[i].dispose();
+                  _legs.removeAt(i);
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.remove_circle_outline_rounded,
+                      color: colors.error, size: 22),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          Divider(color: colors.outlineVariant, height: 1),
+          const SizedBox(height: 14),
+
+          // Transport mode selector
+          _modeSelector(draft),
+          const SizedBox(height: 14),
+
+          // From / To fields or Landmark (Walk)
+          if (draft.mode.hasFromTo) ...[
+            _fieldLabel('From'),
+            const SizedBox(height: 6),
+            TextField(
+              controller: draft.from,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.trip_origin_rounded, size: 18),
+                hintText: 'e.g. Ratnapark',
+              ),
+            ),
+            const SizedBox(height: 6),
+            _locationSuggestions(draft.from),
+            const SizedBox(height: 12),
+            _fieldLabel('To'),
+            const SizedBox(height: 6),
+            TextField(
+              controller: draft.to,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.place_rounded, size: 18),
+                hintText: 'e.g. Budhanilkantha Gate',
+              ),
+            ),
+            const SizedBox(height: 6),
+            _locationSuggestions(draft.to),
+          ] else ...[
+            _fieldLabel('Landmark / Direction'),
+            const SizedBox(height: 6),
+            TextField(
+              controller: draft.landmark,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                hintText: 'e.g. Shivapuri Gate',
+              ),
+            ),
+            const SizedBox(height: 6),
+            _locationSuggestions(draft.landmark),
+          ],
+
+          // Fare chips (not shown for Walk)
+          if (draft.mode.hasFare) ...[
+            const SizedBox(height: 14),
+            _fieldLabel('Fare per person'),
+            const SizedBox(height: 8),
+            _fareChipsRow(draft),
+          ],
+
+          // Duration chips
+          const SizedBox(height: 14),
+          _fieldLabel('Duration'),
+          const SizedBox(height: 8),
+          _durationChipsRow(draft),
+
+          // Optional notes
+          const SizedBox(height: 12),
+          TextField(
+            controller: draft.notes,
+            maxLength: 100,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'Optional note, e.g. "Get off at army checkpoint"',
+              counterStyle: TextStyle(
+                  fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legNumberBadge(int n, ColorScheme colors) => Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: colors.primary,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text('$n',
+            style: TextStyle(
+                color: colors.onPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 13)),
+      );
+
+  Widget _legConnector() {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+              width: 2,
+              height: 14,
+              color: colors.primary.withValues(alpha: 0.35)),
+          Icon(Icons.keyboard_arrow_down_rounded,
+              size: 20, color: colors.primary.withValues(alpha: 0.55)),
+          Container(
+              width: 2,
+              height: 14,
+              color: colors.primary.withValues(alpha: 0.35)),
+        ],
+      ),
+    );
+  }
+
+  Widget _trailStartNode() {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: colors.tertiary,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.hiking_rounded,
+              color: colors.onTertiary, size: 16),
+        ),
+        const SizedBox(width: 10),
+        Text('Trail Start',
+            style: AppText.labelLg(colors.onSurface)
+                .copyWith(fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  Widget _journeySummaryStrip() {
+    final colors = Theme.of(context).colorScheme;
+    final totalMin = _legs.fold(0, (s, l) => s + l.durationMin);
+    final fareMin = _legs.fold(0, (s, l) => s + l.fareMin);
+    final fareMax = _legs.fold(0, (s, l) => s + l.fareMax);
+    String durStr = totalMin == 0
+        ? '—'
+        : totalMin < 60
+            ? '${totalMin}m'
+            : '${totalMin ~/ 60}h${totalMin % 60 > 0 ? ' ${totalMin % 60}m' : ''}';
+    String fareStr = fareMin == 0 && fareMax == 0
+        ? '—'
+        : fareMin == fareMax
+            ? 'Rs $fareMin'
+            : 'Rs $fareMin–$fareMax';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        _summaryCell('Legs', '${_legs.length}', colors),
+        Container(width: 1, height: 28, color: colors.outlineVariant),
+        _summaryCell('Total time', durStr, colors),
+        Container(width: 1, height: 28, color: colors.outlineVariant),
+        _summaryCell('Total fare', fareStr, colors),
+      ]),
+    );
+  }
+
+  Widget _summaryCell(String label, String val, ColorScheme colors) => Column(
+        children: [
+          Text(val,
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: colors.primary)),
+          const SizedBox(height: 2),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, color: colors.onSurfaceVariant)),
+        ],
+      );
+
+  Widget _modeSelector(_JourneyLegDraft draft) {
+    final colors = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: TransportMode.values.map((m) {
+          final sel = draft.mode == m;
+          return Padding(
+            padding: const EdgeInsets.only(right: 7),
+            child: GestureDetector(
+              onTap: () {
+                AppFeedback.toggle();
+                setState(() => draft.mode = m);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: sel
+                      ? colors.primary
+                      : colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: sel ? colors.primary : colors.outlineVariant,
+                    width: sel ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_transportIcon(m),
+                      size: 15,
+                      color: sel ? colors.onPrimary : colors.onSurface),
+                  const SizedBox(width: 5),
+                  Text(m.label,
+                      style: TextStyle(
+                        color: sel ? colors.onPrimary : colors.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ]),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _locationSuggestions(TextEditingController ctl) {
+    final colors = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _commonLocations.map((loc) {
+          final active = ctl.text.trim() == loc;
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () {
+                AppFeedback.tap();
+                setState(() => ctl.text = loc);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: active
+                      ? colors.primary.withValues(alpha: 0.12)
+                      : colors.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: active
+                        ? colors.primary
+                        : colors.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
+                child: Text(loc,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: active ? colors.primary : colors.onSurfaceVariant,
+                    )),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _fareChipsRow(_JourneyLegDraft draft) {
+    final colors = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: _farePresets.map((p) {
+        final sel = draft.fareMin == p.min && draft.fareMax == p.max;
+        return GestureDetector(
+          onTap: () {
+            AppFeedback.toggle();
+            setState(() {
+              draft.fareMin = p.min;
+              draft.fareMax = p.max;
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 130),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: sel
+                  ? colors.primaryContainer
+                  : colors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: sel ? colors.primary : colors.outlineVariant,
+                width: sel ? 1.5 : 1,
+              ),
+            ),
+            child: Text(p.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      sel ? colors.onPrimaryContainer : colors.onSurface,
+                )),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _durationChipsRow(_JourneyLegDraft draft) {
+    final colors = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: _durationPresets.map((p) {
+        final sel = draft.durationMin == p.min;
+        return GestureDetector(
+          onTap: () {
+            AppFeedback.toggle();
+            setState(() => draft.durationMin = p.min);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 130),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: sel
+                  ? colors.primaryContainer
+                  : colors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: sel ? colors.primary : colors.outlineVariant,
+                width: sel ? 1.5 : 1,
+              ),
+            ),
+            child: Text(p.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      sel ? colors.onPrimaryContainer : colors.onSurface,
+                )),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -1491,6 +2006,36 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
       style: AppText.labelLg(colors.onSurface)
           .copyWith(fontWeight: FontWeight.w800),
     );
+  }
+}
+
+// ── Leg draft ─────────────────────────────────────────────────────────────────
+
+class _JourneyLegDraft {
+  final TextEditingController from = TextEditingController();
+  final TextEditingController to = TextEditingController();
+  final TextEditingController landmark = TextEditingController();
+  final TextEditingController notes = TextEditingController();
+  TransportMode mode = TransportMode.bus;
+  int fareMin = 0;
+  int fareMax = 0;
+  int durationMin = 0;
+
+  JourneyLeg toEntity() => JourneyLeg(
+        from: mode.hasFromTo ? from.text.trim() : landmark.text.trim(),
+        to: mode.hasFromTo ? to.text.trim() : '',
+        mode: mode,
+        fareMin: fareMin,
+        fareMax: fareMax,
+        durationMin: durationMin,
+        notes: notes.text.trim(),
+      );
+
+  void dispose() {
+    from.dispose();
+    to.dispose();
+    landmark.dispose();
+    notes.dispose();
   }
 }
 

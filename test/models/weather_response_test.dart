@@ -2,7 +2,7 @@
 // crashes, so the edge cases here matter more than the happy-path one.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kathmanduhiker/models/weather_response.dart';
+import 'package:yama/models/weather_response.dart';
 
 void main() {
   group('WeatherResponse.fromJson', () {

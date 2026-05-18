@@ -5,14 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/repositories/chat_repository_impl.dart';
 import '../data/repositories/hike_event_repository_impl.dart';
+import '../data/repositories/journey_repository_impl.dart';
 import '../data/repositories/trail_repository_impl.dart';
 import '../data/repositories/user_repository_impl.dart';
 import '../data/sources/firestore_chat_source.dart';
 import '../data/sources/firestore_hike_event_source.dart';
+import '../data/sources/firestore_journey_source.dart';
 import '../data/sources/firestore_trail_source.dart';
 import '../data/sources/firestore_user_source.dart';
 import '../domain/repositories/chat_repository.dart';
 import '../domain/repositories/hike_event_repository.dart';
+import '../domain/repositories/journey_repository.dart';
 import '../domain/repositories/trail_repository.dart';
 import '../domain/repositories/user_repository.dart';
 
@@ -50,4 +53,9 @@ final hikeEventRepositoryProvider = Provider<HikeEventRepository>((ref) {
   return HikeEventRepositoryImpl(
     events: FirestoreHikeEventSource(db),
   );
+});
+
+final journeyRepositoryProvider = Provider<JourneyRepository>((ref) {
+  final db = FirebaseFirestore.instance;
+  return JourneyRepositoryImpl(FirestoreJourneySource(db));
 });

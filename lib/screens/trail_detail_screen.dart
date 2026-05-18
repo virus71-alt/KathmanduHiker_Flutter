@@ -28,11 +28,15 @@ import '../utils/image_utils.dart';
 import '../utils/ranking_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/entities/journey.dart';
 import '../state/current_uid_provider.dart';
+import '../state/journey_providers.dart';
 import '../state/navigation_providers.dart';
 import '../state/repositories.dart';
 import '../state/user_profile_provider.dart';
 import 'create_event_bottom_sheet.dart';
+import 'journey_builder_screen.dart';
+import 'journey_detail_screen.dart';
 
 class TrailDetailScreen extends ConsumerStatefulWidget {
   const TrailDetailScreen({super.key});
@@ -795,7 +799,9 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
                 _sectionTitle(
                     Icons.directions_bus_rounded, 'How to Get There'),
                 const SizedBox(height: AppSpacing.stackSm),
-                _howToGetThereCard(),
+                _trail.journeyLegs.isNotEmpty
+                    ? _modernJourneySection()
+                    : _howToGetThereCard(),
                 if (_weather != null) ...[
                   const SizedBox(height: AppSpacing.stackMd),
                   _weatherCard(),
@@ -816,6 +822,8 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
                   const SizedBox(height: AppSpacing.stackSm),
                   for (final e in _events) _eventCard(e),
                 ],
+                const SizedBox(height: AppSpacing.stackLg),
+                _journeysSection(),
                 const SizedBox(height: AppSpacing.stackLg),
                 // Reviews header with rating count on the right — matches the
                 // HTML reference's "Hiker Reviews · 4.8 (124)" pattern.
@@ -838,6 +846,157 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
       ),
     );
   }
+
+  // ─── Journeys section (E11) ─────────────────────────────────────────────
+  Widget _journeysSection() {
+    final journeysAsync = ref.watch(journeysByTrailProvider(_trail.id));
+    return journeysAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (journeys) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.route_rounded,
+                  size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text('How to Get Here',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      )),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Journey'),
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => JourneyBuilderScreen(
+                      attachedTrailId: _trail.id,
+                      attachedTrailName: _trail.name,
+                      onBack: () => Navigator.of(context).pop(),
+                    ),
+                  ));
+                },
+              ),
+            ],
+          ),
+          if (journeys.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No journeys yet. Be the first to share how to get here!',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13),
+              ),
+            )
+          else
+            for (final j in journeys)
+              _journeyCard(j),
+        ],
+      ),
+    );
+  }
+
+  Widget _journeyCard(Journey journey) {
+    final scheme = Theme.of(context).colorScheme;
+    final total = journey.totalDurationMin;
+    final h = total ~/ 60;
+    final m = total % 60;
+    final durStr = total == 0
+        ? null
+        : h == 0
+            ? '${m}m'
+            : m == 0
+                ? '${h}h'
+                : '${h}h ${m}m';
+    final fareStr = journey.totalFareMin == 0 && journey.totalFareMax == 0
+        ? null
+        : journey.totalFareMin == journey.totalFareMax
+            ? 'Rs ${journey.totalFareMin}'
+            : 'Rs ${journey.totalFareMin} – ${journey.totalFareMax}';
+
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => JourneyDetailScreen(
+              journey: journey,
+              onBack: () => Navigator.of(context).pop(),
+            ),
+          ));
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(journey.title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14)),
+              const SizedBox(height: 6),
+              // leg mode icon strip
+              Row(
+                children: journey.legs
+                    .take(5)
+                    .map((l) => Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(
+                            _legIcon(l.mode),
+                            size: 16,
+                            color: scheme.primary,
+                          ),
+                        ))
+                    .toList(),
+              ),
+              if (durStr != null || fareStr != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (durStr != null) ...[
+                      Icon(Icons.schedule_outlined,
+                          size: 13, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 3),
+                      Text(durStr,
+                          style: TextStyle(
+                              fontSize: 12, color: scheme.onSurfaceVariant)),
+                      const SizedBox(width: 12),
+                    ],
+                    if (fareStr != null) ...[
+                      Icon(Icons.payments_outlined,
+                          size: 13, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 3),
+                      Text(fareStr,
+                          style: TextStyle(
+                              fontSize: 12, color: scheme.onSurfaceVariant)),
+                    ],
+                  ],
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text('By ${journey.creatorName}',
+                  style: TextStyle(
+                      fontSize: 11, color: scheme.onSurfaceVariant)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _legIcon(TransportMode mode) => switch (mode) {
+        TransportMode.bus            => Icons.directions_bus_rounded,
+        TransportMode.micro          => Icons.airport_shuttle_rounded,
+        TransportMode.tempo          => Icons.directions_transit_rounded,
+        TransportMode.taxi           => Icons.local_taxi_rounded,
+        TransportMode.bike           => Icons.directions_bike_rounded,
+        TransportMode.walk           => Icons.directions_walk_rounded,
+        TransportMode.privateVehicle => Icons.directions_car_rounded,
+        TransportMode.cableCar       => Icons.cable_rounded,
+      };
 
   // ─── Hero with carousel + overlay ───────────────────────────────────────
   Widget _heroSection(double rating) {
@@ -1639,6 +1798,233 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
       default:
         return Icons.directions_walk_rounded;
     }
+  }
+
+  // ─── Modern Journey Section ──────────────────────────────────────────────
+  Widget _modernJourneySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_trail.reachDifficulty.isNotEmpty ||
+            _trail.lastReturnVehicle.isNotEmpty ||
+            _trail.localGuidance.isNotEmpty) ...[
+          _journeyContextCard(),
+          const SizedBox(height: 16),
+        ],
+        _journeyTimeline(),
+      ],
+    );
+  }
+
+  Widget _journeyContextCard() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: scheme.secondaryContainer.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_trail.reachDifficulty.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(Icons.bar_chart_rounded, size: 16, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 8),
+                Text('Difficulty to reach: ',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: scheme.onSecondaryContainer)),
+                Expanded(
+                  child: Text(_trail.reachDifficulty,
+                      style: TextStyle(fontSize: 13, color: scheme.onSecondaryContainer)),
+                ),
+              ],
+            ),
+          ],
+          if (_trail.lastReturnVehicle.isNotEmpty) ...[
+            if (_trail.reachDifficulty.isNotEmpty) const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.access_time_filled_rounded, size: 16, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 8),
+                Text('Last return vehicle: ',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: scheme.onSecondaryContainer)),
+                Expanded(
+                  child: Text(_trail.lastReturnVehicle,
+                      style: TextStyle(fontSize: 13, color: scheme.onSecondaryContainer)),
+                ),
+              ],
+            ),
+          ],
+          if (_trail.localGuidance.isNotEmpty) ...[
+            if (_trail.reachDifficulty.isNotEmpty || _trail.lastReturnVehicle.isNotEmpty) const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lightbulb_circle_rounded, size: 16, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('"${_trail.localGuidance}"',
+                      style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: scheme.onSecondaryContainer, height: 1.4)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _journeyTimeline() {
+    final legs = _trail.journeyLegs;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < legs.length; i++)
+          _timelineNode(legs[i], isLast: i == legs.length - 1),
+      ],
+    );
+  }
+
+  Widget _timelineNode(JourneyLeg leg, {required bool isLast}) {
+    final scheme = Theme.of(context).colorScheme;
+    final isWalk = leg.mode == TransportMode.walk;
+    final iconColor = isWalk ? Colors.green.shade600 : scheme.primary;
+    final iconBg = isWalk ? Colors.green.shade50 : scheme.primaryContainer;
+    
+    final fareStr = leg.fareMin == 0 && leg.fareMax == 0
+        ? 'Free'
+        : leg.fareMin == leg.fareMax
+            ? 'Rs. ${leg.fareMin}'
+            : 'Rs. ${leg.fareMin} - ${leg.fareMax}';
+
+    final durStr = leg.durationMin == 0
+        ? ''
+        : leg.durationMin < 60
+            ? '${leg.durationMin} mins'
+            : '${leg.durationMin ~/ 60}h ${leg.durationMin % 60 == 0 ? '' : '${leg.durationMin % 60}m'}'.trim();
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Timeline Line & Icon
+          SizedBox(
+            width: 48,
+            child: Column(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(_legIcon(leg.mode), size: 20, color: iconColor),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      color: scheme.outlineVariant,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                    ),
+                  )
+                else
+                  const SizedBox(height: 16), // Bottom padding for last item
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Card Content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 20.0),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      leg.mode.label.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (leg.mode.hasFromTo) ...[
+                      Text(leg.from, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.2)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Icon(Icons.arrow_downward_rounded, size: 16, color: scheme.outline),
+                      ),
+                      Text(leg.to, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.2)),
+                    ] else ...[
+                      Text(leg.from.isNotEmpty ? leg.from : 'Trailhead', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    ],
+                    if (durStr.isNotEmpty || fareStr != 'Free' || leg.notes.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      const Divider(height: 1),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (fareStr != 'Free' && fareStr.isNotEmpty)
+                            _journeyChip(Icons.payments_outlined, fareStr),
+                          if (durStr.isNotEmpty)
+                            _journeyChip(Icons.schedule_outlined, durStr),
+                        ],
+                      ),
+                      if (leg.notes.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(leg.notes, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant, height: 1.45)),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _journeyChip(IconData icon, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
   }
 
   // ─── Details card ───────────────────────────────────────────────────────
