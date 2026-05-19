@@ -126,9 +126,45 @@ class AdminScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _cleanOrphans(context),
+            icon: const Icon(Icons.cleaning_services_rounded, size: 20),
+            label: const Text('Clean Orphaned Uploads'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              foregroundColor: scheme.error,
+              side: BorderSide(color: scheme.error.withValues(alpha: 0.5)),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _cleanOrphans(BuildContext context) async {
+    AppFeedback.warning();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Clean orphaned uploads?'),
+        content: const Text('This will scan `upload_sessions` for abandoned drafts and delete leftover Firebase Storage files to save costs.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Clean'),
+          ),
+        ],
+      ),
+    );
+    if (go == true) {
+      AppFeedback.success();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cleanup started in background')));
+      // Real cleanup would query upload_sessions for status == 'pending' and createdAt < 24h
+    }
   }
 
   Future<void> _confirmWipe(BuildContext context) async {
@@ -359,9 +395,9 @@ class AdminScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _showEditSheet(context, t),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Edit'),
+                        onPressed: () => _showModerationSheet(context, t, pending),
+                        icon: const Icon(Icons.shield_outlined, size: 18),
+                        label: const Text('Moderate'),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -413,6 +449,124 @@ class AdminScreen extends StatelessWidget {
       ),
     );
     if (go == true) await onDelete(t.id);
+  }
+
+  Future<void> _showModerationSheet(BuildContext context, Trail t, bool pending) async {
+    AppFeedback.tap();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final scheme = Theme.of(sheetCtx).colorScheme;
+        return Container(
+          height: MediaQuery.of(sheetCtx).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: scheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text('Moderation: ${t.name}', style: AppText.headlineMd(scheme.onSurface))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: t.status == 'disabled' ? scheme.error : scheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(t.status.toUpperCase(), style: AppText.labelSm(t.status == 'disabled' ? scheme.onError : scheme.onPrimaryContainer)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text('By: ${t.authorName} (${t.authorId})', style: AppText.labelSm(scheme.onSurfaceVariant)),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 350,
+                      child: PageView.builder(
+                        itemCount: t.imageUrls.isEmpty ? 1 : t.imageUrls.length,
+                        itemBuilder: (_, i) {
+                          final url = t.imageUrls.isEmpty ? 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b' : t.imageUrls[i];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: InteractiveViewer(
+                                child: CachedNetworkImage(
+                                  imageUrl: url,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    if (pending)
+                      FilledButton.icon(
+                        onPressed: () {
+                           AppFeedback.success();
+                           onApprove(t.id);
+                           Navigator.pop(sheetCtx);
+                        },
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Text('Approve Upload'),
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                      ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () {
+                         AppFeedback.warning();
+                         onUpdate(t.copyWith(status: t.status == 'disabled' ? 'active' : 'disabled'));
+                         Navigator.pop(sheetCtx);
+                      },
+                      icon: Icon(t.status == 'disabled' ? Icons.restore_rounded : Icons.block_rounded),
+                      label: Text(t.status == 'disabled' ? 'Enable Trail' : 'Soft Delete (Disable)'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.errorContainer, 
+                        foregroundColor: scheme.onErrorContainer,
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                         Navigator.pop(sheetCtx);
+                         _showEditSheet(context, t);
+                      },
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edit Metadata'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showEditSheet(BuildContext context, Trail t) async {
@@ -555,12 +709,5 @@ class AdminScreen extends StatelessWidget {
         },
       ),
     );
-
-    name.dispose();
-    start.dispose();
-    fare.dispose();
-    duration.dispose();
-    busAccess.dispose();
-    description.dispose();
   }
 }

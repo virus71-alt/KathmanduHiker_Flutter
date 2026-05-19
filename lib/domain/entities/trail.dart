@@ -27,6 +27,7 @@ class Trail {
   final int reviewCount;
   final String confidenceLabel;
   final Map<String, double> categoryAverages;
+  final String status;
 
   const Trail({
     this.id = '',
@@ -55,6 +56,7 @@ class Trail {
     this.reviewCount = 0,
     this.confidenceLabel = 'Low Confidence',
     this.categoryAverages = const {},
+    this.status = 'active',
   });
 
   Trail copyWith({
@@ -84,33 +86,36 @@ class Trail {
     int? reviewCount,
     String? confidenceLabel,
     Map<String, double>? categoryAverages,
-  }) =>
-      Trail(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        difficulty: difficulty ?? this.difficulty,
-        transportRoute: transportRoute ?? this.transportRoute,
-        fare: fare ?? this.fare,
-        food: food ?? this.food,
-        description: description ?? this.description,
-        imageUrls: imageUrls ?? this.imageUrls,
-        userRating: userRating ?? this.userRating,
-        ratingScore: ratingScore ?? this.ratingScore,
-        travelMode: travelMode ?? this.travelMode,
-        busAccess: busAccess ?? this.busAccess,
-        duration: duration ?? this.duration,
-        facilities: facilities ?? this.facilities,
-        latitude: latitude ?? this.latitude,
-        longitude: longitude ?? this.longitude,
-        isApproved: isApproved ?? this.isApproved,
-        authorId: authorId ?? this.authorId,
-        authorName: authorName ?? this.authorName,
-        journeyLegs: journeyLegs ?? this.journeyLegs,
-        reachDifficulty: reachDifficulty ?? this.reachDifficulty,
-        lastReturnVehicle: lastReturnVehicle ?? this.lastReturnVehicle,
-        localGuidance: localGuidance ?? this.localGuidance,
-        reviewCount: reviewCount ?? this.reviewCount,
-        confidenceLabel: confidenceLabel ?? this.confidenceLabel,
-        categoryAverages: categoryAverages ?? this.categoryAverages,
-      );
+    String? status,
+  }) {
+    return Trail(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      difficulty: difficulty ?? this.difficulty,
+      transportRoute: transportRoute ?? this.transportRoute,
+      fare: fare ?? this.fare,
+      food: food ?? this.food,
+      description: description ?? this.description,
+      imageUrls: imageUrls ?? this.imageUrls,
+      userRating: userRating ?? this.userRating,
+      ratingScore: ratingScore ?? this.ratingScore,
+      travelMode: travelMode ?? this.travelMode,
+      busAccess: busAccess ?? this.busAccess,
+      duration: duration ?? this.duration,
+      facilities: facilities ?? this.facilities,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      isApproved: isApproved ?? this.isApproved,
+      authorId: authorId ?? this.authorId,
+      authorName: authorName ?? this.authorName,
+      journeyLegs: journeyLegs ?? this.journeyLegs,
+      reachDifficulty: reachDifficulty ?? this.reachDifficulty,
+      lastReturnVehicle: lastReturnVehicle ?? this.lastReturnVehicle,
+      localGuidance: localGuidance ?? this.localGuidance,
+      reviewCount: reviewCount ?? this.reviewCount,
+      confidenceLabel: confidenceLabel ?? this.confidenceLabel,
+      categoryAverages: categoryAverages ?? this.categoryAverages,
+      status: status ?? this.status,
+    );
+  }
 }

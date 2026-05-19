@@ -13,6 +13,8 @@ import '../domain/entities/journey.dart';
 import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/image_utils.dart';
+import '../utils/permission_rationale.dart';
+import '../services/trail_upload_service.dart';
 import '../utils/ranking_manager.dart';
 
 class AddTrailScreen extends StatefulWidget {
@@ -42,7 +44,8 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   String _travelMode = 'Bus';
   double _rating = 3.0;
   LatLng _pickedLocation = const LatLng(27.7172, 85.3240);
-  List<File> _selectedImages = [];
+  late final TrailUploadService _uploadService;
+  int _mainImageIndex = 0;
   final Set<String> _facilities = {};
 
   bool _submitting = false;
@@ -85,6 +88,15 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
   static const _stepLabels = ['Basics', 'Difficulty', 'Transport Details', 'Final Details'];
 
   @override
+  void initState() {
+    super.initState();
+    _uploadService = TrailUploadService();
+    _name.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() => setState(() {});
+
+  @override
   void dispose() {
     _name.dispose();
     _duration.dispose();
@@ -96,6 +108,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
       leg.dispose();
     }
     _pageCtl.dispose();
+    _uploadService.dispose();
     super.dispose();
   }
 
@@ -140,7 +153,9 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
     AppFeedback.tap();
     final imgs = await _picker.pickMultiImage();
     if (imgs.isNotEmpty) {
-      setState(() => _selectedImages = [..._selectedImages, ...imgs.map((x) => File(x.path))]);
+      for (final x in imgs) {
+        _uploadService.addFile(File(x.path));
+      }
     }
   }
 
@@ -174,17 +189,11 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
     AppFeedback.success();
     setState(() => _submitting = true);
     try {
-      final urls = <String>[];
-      for (final f in _selectedImages) {
-        try {
-          final bytes = await ImageUtils.compress(f);
-          final ref =
-              _storage.ref().child('trails/${const Uuid().v4()}.jpg');
-          await ref.putData(bytes);
-          urls.add(await ref.getDownloadURL());
-        } catch (_) {
-          // Skip individual failed uploads but keep going.
-        }
+      final baseUrls = await _uploadService.finalizeUploads();
+      final urls = <String>[...baseUrls];
+      if (urls.isNotEmpty && _mainImageIndex != 0 && _mainImageIndex < urls.length) {
+        final mainUrl = urls.removeAt(_mainImageIndex);
+        urls.insert(0, mainUrl);
       }
 
       final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -289,7 +298,7 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
         // Photo is now mandatory — the trail card on the home grid loads
         // imageUrls[0], so allowing no-photo submissions left the feed
         // showing a stock fallback. Require at least one upload.
-        return _name.text.trim().isNotEmpty && _selectedImages.isNotEmpty;
+        return _name.text.trim().isNotEmpty && _uploadService.tasks.isNotEmpty;
       case 1:
         return _difficulty.isNotEmpty;
       case 2:
@@ -566,70 +575,153 @@ class _AddTrailScreenState extends State<AddTrailScreen> {
         _sectionSubtitle(
             'At least one photo is required so other hikers can see the trail. You can add up to 5.'),
         const SizedBox(height: 14),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate:
-              const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1,
-          ),
-          itemCount: _selectedImages.length + 1,
-          itemBuilder: (_, i) {
-            if (i == 0) {
-              // Upload tile
-              return InkWell(
-                onTap: _pickImages,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                child: DottedBorderBox(
-                  color: colors.outlineVariant,
-                  radius: AppRadius.lg,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_a_photo_rounded,
-                            size: 30, color: colors.primary),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Upload',
-                          style: AppText.labelLg(colors.primary)
-                              .copyWith(fontWeight: FontWeight.w800),
+        ListenableBuilder(
+          listenable: _uploadService,
+          builder: (context, _) {
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1,
+              ),
+              itemCount: _uploadService.tasks.length + 1,
+              itemBuilder: (_, i) {
+                if (i == 0) {
+                  // Upload tile
+                  return InkWell(
+                    onTap: _pickImages,
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    child: DottedBorderBox(
+                      color: colors.outlineVariant,
+                      radius: AppRadius.lg,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
                         ),
-                      ],
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_a_photo_rounded,
+                                size: 30, color: colors.primary),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Upload',
+                              style: AppText.labelLg(colors.primary)
+                                  .copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              );
-            }
-            final f = _selectedImages[i - 1];
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  child: Image.file(f, fit: BoxFit.cover),
-                ),
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedImages.remove(f)),
-                    child: const CircleAvatar(
-                      radius: 14,
-                      backgroundColor: Colors.black54,
-                      child: Icon(Icons.close_rounded,
-                          color: Colors.white, size: 16),
+                  );
+                }
+                final task = _uploadService.tasks[i - 1];
+                final isMain = (i - 1) == _mainImageIndex;
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: isMain ? Border.all(color: colors.primary, width: 3) : null,
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                        ),
+                        child: Image.file(task.file, fit: BoxFit.cover),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    if (task.status == UploadStatus.uploading || task.status == UploadStatus.pending)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black45,
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: task.status == UploadStatus.uploading && task.progress > 0 ? task.progress : null,
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (task.status == UploadStatus.failed)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black45,
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
+                          ),
+                          child: Center(
+                            child: IconButton(
+                              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 32),
+                              onPressed: () => _uploadService.retry(task),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: GestureDetector(
+                        onTap: () {
+                          final idx = i - 1;
+                          _uploadService.removeFile(task);
+                          setState(() {
+                            if (_uploadService.tasks.isEmpty) {
+                              _mainImageIndex = 0;
+                            } else if (idx == _mainImageIndex) {
+                              _mainImageIndex = 0; // reset to first if main is removed
+                            } else if (idx < _mainImageIndex) {
+                              _mainImageIndex--; // shift main index if an earlier image is removed
+                            }
+                          });
+                        },
+                        child: const CircleAvatar(
+                          radius: 14,
+                          backgroundColor: Colors.black54,
+                          child: Icon(Icons.close_rounded,
+                              color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ),
+                    if (isMain)
+                      Positioned(
+                        bottom: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: colors.primary,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('COVER', style: AppText.labelSm(colors.onPrimary).copyWith(fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    else
+                      Positioned(
+                        bottom: 6,
+                        left: 6,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _mainImageIndex = i - 1),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('Set Cover', style: AppText.labelSm(Colors.white).copyWith(fontSize: 9)),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             );
           },
         ),

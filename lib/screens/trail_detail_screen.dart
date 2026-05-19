@@ -26,6 +26,7 @@ import '../theme/app_theme.dart';
 import '../utils/feedback.dart';
 import '../utils/image_utils.dart';
 import '../utils/ranking_manager.dart';
+import '../utils/rating_calculator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/entities/journey.dart';
@@ -70,6 +71,14 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
   double _newRating = 4.0;
   bool _submittingReview = false;
   bool _uploadingPhoto = false;
+
+  // Categorical Ratings
+  double _newScenery = 4.0;
+  double _newDifficulty = 3.0;
+  double _newSafety = 4.0;
+  double _newBeginner = 3.0;
+  double _newTransport = 3.0;
+  double _newCrowd = 3.0;
 
   // Hike tracking
   bool _tracking = false;
@@ -329,11 +338,23 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
     }
     AppFeedback.success();
     setState(() => _submittingReview = true);
+    
+    final categories = {
+      'scenery': _newScenery,
+      'difficulty': _newDifficulty,
+      'safety': _newSafety,
+      'beginner': _newBeginner,
+      'transport': _newTransport,
+      'crowd': _newCrowd,
+    };
+
     await _db.collection('trails').doc(_trail.id).collection('reviews').add({
       'userId': _uid,
       'userName': _userName,
       'rating': _newRating,
       'comment': _reviewCtl.text.trim(),
+      'categories': categories,
+      'isVerified': false, // can check if user has finished trail here later
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     await _db
@@ -343,7 +364,16 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
     await _recalculateTrailRating();
     if (!mounted) return;
     _reviewCtl.clear();
-    setState(() => _submittingReview = false);
+    setState(() {
+      _newRating = 4.0;
+      _newScenery = 4.0;
+      _newDifficulty = 3.0;
+      _newSafety = 4.0;
+      _newBeginner = 3.0;
+      _newTransport = 3.0;
+      _newCrowd = 3.0;
+      _submittingReview = false;
+    });
   }
 
 
@@ -354,26 +384,24 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
           .doc(_trail.id)
           .collection('reviews')
           .get();
-      final reviewRatings = snap.docs
-          .map((d) => ((d.data()['rating'] ?? 0) as num).toDouble())
-          .where((v) => v > 0)
-          .toList();
-      // Seed = the rating the trail author gave on AddTrail. We only fold it
-      // in when no reviews exist yet (so a single user-given rating still
-      // shows), otherwise the community average takes over.
-      final seed = _trail.ratingScore > 0
-          ? _trail.ratingScore
-          : _trail.userRating.toDouble();
-      final all = reviewRatings.isEmpty
-          ? [if (seed > 0) seed]
-          : reviewRatings;
-      if (all.isEmpty) return;
-      final avg = all.reduce((a, b) => a + b) / all.length;
-      final rounded = avg.round().clamp(1, 5);
+          
+      final List<TrailReview> allReviews = snap.docs.map(TrailReview.fromDoc).toList();
+      
+      final updatedTrail = RatingCalculator.computeBayesian(_trail, allReviews);
+
       await _db.collection('trails').doc(_trail.id).update({
-        'ratingScore': double.parse(avg.toStringAsFixed(2)),
-        'userRating': rounded,
+        'ratingScore': updatedTrail.ratingScore,
+        'userRating': updatedTrail.userRating,
+        'reviewCount': updatedTrail.reviewCount,
+        'confidenceLabel': updatedTrail.confidenceLabel,
+        'categoryAverages': updatedTrail.categoryAverages,
       });
+
+      if (mounted) {
+        setState(() {
+          _trail = updatedTrail;
+        });
+      }
     } catch (_) {
       // Non-fatal — the next post/edit will try again.
     }
@@ -1155,13 +1183,38 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
               if (rating > 0) ...[
                 const SizedBox(height: 6),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     _stars(rating, 16),
                     const SizedBox(width: 6),
                     Text(
-                      '${rating.toStringAsFixed(1)} • ${_reviews.length} reviews',
-                      style: AppText.labelSm(Colors.white.withOpacity(0.92)),
+                      rating.toStringAsFixed(1),
+                      style: AppText.labelSm(Colors.white).copyWith(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
+                    if (_trail.reviewCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _trail.confidenceLabel == 'Low Confidence' 
+                              ? Colors.black.withOpacity(0.3)
+                              : Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _trail.confidenceLabel == 'Low Confidence'
+                                ? Colors.transparent
+                                : Colors.white.withOpacity(0.4),
+                          ),
+                        ),
+                        child: Text(
+                          _trail.confidenceLabel,
+                          style: AppText.labelSm(Colors.white).copyWith(
+                            fontSize: 10,
+                            fontWeight: _trail.confidenceLabel == 'Low Confidence' ? FontWeight.w500 : FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -2215,7 +2268,7 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
         ),
         if (hasRating)
           Text(
-            '${rating.toStringAsFixed(1)} (${_reviews.length})',
+            '${rating.toStringAsFixed(1)} (${_trail.reviewCount} reviews • ${_trail.confidenceLabel})',
             style: AppText.labelLg(scheme.primary)
                 .copyWith(fontWeight: FontWeight.w800),
           ),
@@ -2565,26 +2618,18 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
         children: [
           Text('How was your hike?',
               style: AppText.labelLg(Theme.of(context).colorScheme.onSurface)),
-          const SizedBox(height: 6),
-          Row(children: [
-            _stars(_newRating, 26),
-            const SizedBox(width: 8),
-            Text('${_newRating.toStringAsFixed(1)} / 5',
-                style: AppText.labelLg(Theme.of(context).colorScheme.primary)),
-          ]),
-          Slider(
-            value: _newRating,
-            min: 1,
-            max: 5,
-            divisions: 40,
-            activeColor: Theme.of(context).colorScheme.primary,
-            onChanged: (v) =>
-                setState(() => _newRating = (v * 10).roundToDouble() / 10),
-          ),
-          Text(_ratingEmotion(_newRating),
-              style: AppText.labelSm(Theme.of(context).colorScheme.tertiary)
-                  .copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          _categorySlider('Overall Experience', _newRating, (v) => setState(() => _newRating = v), isMain: true),
+          const Divider(height: 24),
+          Text('Categorical Ratings', style: AppText.labelSm(Theme.of(context).colorScheme.onSurfaceVariant).copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          _categorySlider('Scenery', _newScenery, (v) => setState(() => _newScenery = v)),
+          _categorySlider('Difficulty', _newDifficulty, (v) => setState(() => _newDifficulty = v)),
+          _categorySlider('Safety', _newSafety, (v) => setState(() => _newSafety = v)),
+          _categorySlider('Beginner Friendly', _newBeginner, (v) => setState(() => _newBeginner = v)),
+          _categorySlider('Accessibility', _newTransport, (v) => setState(() => _newTransport = v)),
+          _categorySlider('Crowd Level', _newCrowd, (v) => setState(() => _newCrowd = v)),
+          const SizedBox(height: 16),
           TextField(
             controller: _reviewCtl,
             minLines: 2,
@@ -2600,6 +2645,54 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
               onPressed: _submittingReview ? null : _postReview,
               icon: const Icon(Icons.send_rounded, size: 18),
               label: const Text('Post review'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categorySlider(String label, double value, ValueChanged<double> onChanged, {bool isMain = false}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: AppText.labelSm(scheme.onSurface).copyWith(
+                fontWeight: isMain ? FontWeight.bold : FontWeight.w500,
+                fontSize: isMain ? 14 : 12,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: isMain ? 6 : 4,
+                thumbShape: RoundSliderThumbShape(enabledThumbRadius: isMain ? 10 : 8),
+                overlayShape: SliderComponentShape.noOverlay,
+                activeTrackColor: isMain ? scheme.primary : scheme.secondary,
+                thumbColor: isMain ? scheme.primary : scheme.secondary,
+              ),
+              child: Slider(
+                value: value,
+                min: 1,
+                max: 5,
+                divisions: 4,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 30,
+            child: Text(
+              value.toStringAsFixed(1),
+              textAlign: TextAlign.right,
+              style: AppText.labelSm(scheme.onSurfaceVariant).copyWith(fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -2679,12 +2772,53 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              '"${r.comment}"',
-              style: AppText.bodyMd(scheme.onSurfaceVariant)
-                  .copyWith(fontStyle: FontStyle.italic, height: 1.45),
-            ),
+            if (r.comment.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                '"${r.comment}"',
+                style: AppText.bodyMd(scheme.onSurfaceVariant)
+                    .copyWith(fontStyle: FontStyle.italic, height: 1.45),
+              ),
+            ],
+            if (r.categories.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: r.categories.entries.map((e) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isDark ? scheme.surfaceContainerHigh : scheme.surface,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${e.key.toUpperCase()} ',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          e.value.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: scheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
       ),

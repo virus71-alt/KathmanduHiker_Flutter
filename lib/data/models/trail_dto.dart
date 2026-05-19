@@ -30,6 +30,7 @@ class TrailDto {
   final int reviewCount;
   final String confidenceLabel;
   final Map<String, double> categoryAverages;
+  final String status;
 
   const TrailDto({
     this.id = '',
@@ -58,10 +59,13 @@ class TrailDto {
     this.reviewCount = 0,
     this.confidenceLabel = 'Low Confidence',
     this.categoryAverages = const {},
+    this.status = 'active',
   });
 
   factory TrailDto.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final d = doc.data() ?? {};
+    final d = doc.data()!;
+    final rawCat = d['categoryAverages'] as Map<dynamic, dynamic>?;
+
     return TrailDto(
       id: doc.id,
       name: (d['name'] ?? '') as String,
@@ -91,10 +95,50 @@ class TrailDto {
       localGuidance: (d['localGuidance'] ?? '') as String,
       reviewCount: ((d['reviewCount'] ?? 0) as num).toInt(),
       confidenceLabel: (d['confidenceLabel'] ?? 'Low Confidence') as String,
-      categoryAverages: (d['categoryAverages'] as Map<String, dynamic>?)?.map(
-            (k, v) => MapEntry(k, (v as num).toDouble()),
-          ) ??
-          const {},
+      categoryAverages: rawCat != null
+          ? Map<String, double>.from(
+              rawCat.map((k, v) => MapEntry(k as String, (v as num).toDouble())))
+          : const {},
+      status: (d['status'] ?? 'active') as String,
+    );
+  }
+
+  factory TrailDto.fromMap(Map<String, dynamic> data, String docId) {
+    final rawCat = data['categoryAverages'] as Map<dynamic, dynamic>?;
+    return TrailDto(
+      id: docId,
+      name: (data['name'] ?? '') as String,
+      difficulty: (data['difficulty'] ?? '') as String,
+      transportRoute: (data['transportRoute'] ?? '') as String,
+      fare: (data['fare'] ?? '') as String,
+      food: (data['food'] ?? '') as String,
+      description: (data['description'] ?? '') as String,
+      imageUrls: ((data['imageUrls'] as List?) ?? const []).cast<String>(),
+      userRating: ((data['userRating'] ?? 0) as num).toInt(),
+      ratingScore: ((data['ratingScore'] ?? 0) as num).toDouble(),
+      travelMode: (data['travelMode'] ?? '') as String,
+      busAccess: (data['busAccess'] ?? '') as String,
+      duration: (data['duration'] ?? '') as String,
+      facilities: ((data['facilities'] as List?) ?? const []).cast<String>(),
+      latitude: ((data['latitude'] ?? 0) as num).toDouble(),
+      longitude: ((data['longitude'] ?? 0) as num).toDouble(),
+      isApproved: (data['isApproved'] ?? false) as bool,
+      authorId: (data['authorId'] ?? '') as String,
+      authorName: (data['authorName'] ?? '') as String,
+      journeyLegs: (data['journeyLegs'] as List<dynamic>?)
+              ?.map((e) => JourneyLeg.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      reachDifficulty: (data['reachDifficulty'] ?? '') as String,
+      lastReturnVehicle: (data['lastReturnVehicle'] ?? '') as String,
+      localGuidance: (data['localGuidance'] ?? '') as String,
+      reviewCount: data['reviewCount'] as int? ?? 0,
+      confidenceLabel: data['confidenceLabel'] as String? ?? 'Low Confidence',
+      categoryAverages: rawCat != null
+          ? Map<String, double>.from(
+              rawCat.map((k, v) => MapEntry(k as String, (v as num).toDouble())))
+          : const {},
+      status: data['status'] as String? ?? 'active',
     );
   }
 
@@ -125,6 +169,7 @@ class TrailDto {
         reviewCount: t.reviewCount,
         confidenceLabel: t.confidenceLabel,
         categoryAverages: t.categoryAverages,
+        status: t.status,
       );
 
   Trail toEntity() => Trail(
@@ -154,6 +199,7 @@ class TrailDto {
         reviewCount: reviewCount,
         confidenceLabel: confidenceLabel,
         categoryAverages: categoryAverages,
+        status: status,
       );
 
   Map<String, dynamic> toMap() => {
@@ -182,5 +228,6 @@ class TrailDto {
         'reviewCount': reviewCount,
         'confidenceLabel': confidenceLabel,
         'categoryAverages': categoryAverages,
+        'status': status,
       };
 }
