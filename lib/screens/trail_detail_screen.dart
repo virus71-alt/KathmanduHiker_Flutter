@@ -82,6 +82,7 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
 
   // Hike tracking
   bool _tracking = false;
+  TrackingStatus _trackingStatus = TrackingStatus.idle;
   double _distance = 0;
   String? _activeTrailId;
   double _finishedDistance = 0;
@@ -175,6 +176,7 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
     _distance = t.currentDistance;
     _activeTrailId = t.currentTrailId;
     _subs.add(t.isTracking.listen((v) => mounted ? setState(() => _tracking = v) : null));
+    _subs.add(t.trackingStatus.listen((s) => mounted ? setState(() => _trackingStatus = s) : null));
     _subs.add(t.distanceTraveled.listen((d) => mounted ? setState(() => _distance = d) : null));
     _subs.add(t.activeTrailId.listen((id) => mounted ? setState(() => _activeTrailId = id) : null));
   }
@@ -213,7 +215,7 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
       if (!go) return;
     }
 
-    final ok = await HikeTrackingService.instance.start(_trail.id);
+    final ok = await HikeTrackingService.instance.start(_trail);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enable location to track your hike.')),
@@ -1443,16 +1445,51 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
     final km = activeHere ? _distance / 1000.0 : _finishedDistance / 1000.0;
     final showKm = activeHere || _finishedDistance > 0;
 
-    final title = activeHere
-        ? 'Hike in Progress'
-        : _finishedDistance > 0
-            ? 'Last Tracked Hike'
-            : 'Track Your Hike';
-    final subtitle = activeHere
-        ? 'Live GPS distance — vehicle motion is filtered out.'
-        : _finishedDistance > 0
-            ? 'Tap reset to start fresh.'
-            : 'Earn XP for trekking the trail on foot.';
+    String title;
+    String subtitle;
+    Color iconColor;
+    Color bgColor;
+    IconData icon;
+
+    if (activeHere) {
+      if (_trackingStatus == TrackingStatus.pausedForSpeed) {
+        title = 'Vehicle Movement Detected';
+        subtitle = 'Tracking paused automatically due to unrealistic hiking speed.';
+        iconColor = scheme.error;
+        bgColor = scheme.errorContainer;
+        icon = Icons.directions_car_rounded;
+      } else if (_trackingStatus == TrackingStatus.pausedOffTrail) {
+        title = 'Off Trail';
+        subtitle = 'Tracking paused because you are too far from the trail region.';
+        iconColor = scheme.error;
+        bgColor = scheme.errorContainer;
+        icon = Icons.wrong_location_rounded;
+      } else if (_trackingStatus == TrackingStatus.pausedLowAccuracy) {
+        title = 'Poor GPS Signal';
+        subtitle = 'Finding location... ensuring accurate distance tracking.';
+        iconColor = scheme.error;
+        bgColor = scheme.errorContainer;
+        icon = Icons.gps_off_rounded;
+      } else {
+        title = 'Hike in Progress';
+        subtitle = 'Live validated distance — GPS noise and vehicle motion are filtered.';
+        iconColor = scheme.tertiary;
+        bgColor = scheme.tertiary.withValues(alpha: 0.18);
+        icon = Icons.gps_fixed_rounded;
+      }
+    } else if (_finishedDistance > 0) {
+      title = 'Last Tracked Hike';
+      subtitle = 'Tap reset to start fresh.';
+      iconColor = scheme.primary;
+      bgColor = scheme.primary.withValues(alpha: 0.10);
+      icon = Icons.directions_walk_rounded;
+    } else {
+      title = 'Track Your Hike';
+      subtitle = 'Earn XP for trekking the trail on foot.';
+      iconColor = scheme.primary;
+      bgColor = scheme.primary.withValues(alpha: 0.10);
+      icon = Icons.directions_walk_rounded;
+    }
 
     return Container(
       decoration: topoCardDecoration(context),
@@ -1466,18 +1503,10 @@ class _TrailDetailScreenState extends ConsumerState<TrailDetailScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: activeHere
-                      ? scheme.tertiary.withValues(alpha: 0.18)
-                      : scheme.primary.withValues(alpha: 0.10),
+                  color: bgColor,
                   borderRadius: BorderRadius.circular(AppRadius.base),
                 ),
-                child: Icon(
-                  activeHere
-                      ? Icons.gps_fixed_rounded
-                      : Icons.directions_walk_rounded,
-                  color: activeHere ? scheme.tertiary : scheme.primary,
-                  size: 22,
-                ),
+                child: Icon(icon, color: iconColor, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(

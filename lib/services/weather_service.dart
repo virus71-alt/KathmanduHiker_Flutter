@@ -21,7 +21,7 @@ class WeatherService {
   WeatherService._();
 
   static const String _apiKey =
-      String.fromEnvironment('OPENWEATHER_KEY');
+      String.fromEnvironment('OPENWEATHER_KEY', defaultValue: 'e631615be1564b8422a6b695ad0cbe60');
   static const String _base =
       'https://api.openweathermap.org/data/2.5/weather';
 
